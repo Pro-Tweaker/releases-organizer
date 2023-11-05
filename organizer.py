@@ -26,6 +26,9 @@ VALID_EXTENSIONS_TO_MOVE = [
     'mp4',
     'mkv',
     'mk3d',
+]
+
+VALID_EXTENSIONS_TO_COPY = [
     'srt',
 ]
 
@@ -46,7 +49,7 @@ def separate(folder_path):
             
             if is_folder:
                 # If the item is a folder, list its contents
-                subfolder_contents = [file for file in os.listdir(item_path) if file.endswith(tuple(VALID_EXTENSIONS_TO_MOVE))]
+                subfolder_contents = [file for file in os.listdir(item_path) if file.endswith(tuple(VALID_EXTENSIONS_TO_MOVE)) or file.endswith(tuple(VALID_EXTENSIONS_TO_COPY))]
 
                 if len(subfolder_contents) != 0:
                     release_objects.append(Release(item, is_folder, subfolder_contents))
@@ -263,12 +266,15 @@ def main():
             if release.is_folder:
                 # Iterate through files in the source folder
                 for file in release.files:
-                    if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
+                    if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_COPY):
+                        shutil.copy(os.path.join(folder, release.name, file), path)
+                    elif any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
                         shutil.move(os.path.join(folder, release.name, file), path)
-                        # Check if the source folder is empty and delete it
-                        if delete_empty:
-                            if not os.listdir(os.path.join(folder, release.name)):
-                                os.rmdir(os.path.join(folder, release.name))
+
+                # Check if the source folder is empty and delete it
+                if delete_empty:
+                    if not os.listdir(os.path.join(folder, release.name)):
+                        os.rmdir(os.path.join(folder, release.name))
             else:
                 shutil.move(os.path.join(folder, release.name), path)
 
