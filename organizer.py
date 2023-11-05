@@ -180,6 +180,7 @@ def arguments():
     parser.add_argument('folder', nargs='?', default='.')
     parser.add_argument('output', nargs='?', default='output')
     parser.add_argument('-s', '--source', choices=['tmdb', 'srrdb'], default='tmdb')
+    parser.add_argument('-de', '--delete-empty', help='Delete empty folders after move', action='store_true', default=False)
     parser.add_argument('-ds', '--srr', help='Download SRR file from ssrDB', action='store_true', default=False)
     parser.add_argument('-dn', '--nfo', help='Download NFO file from ssrDB', action='store_true', default=False)
     parser.add_argument('-d', '--debug', help='Enable debug output', action='store_true', default=False)
@@ -193,6 +194,7 @@ def main():
     folder = args.folder
     output = args.output
     source = args.source
+    delete_empty = args.delete_empty
 
     DEBUG = args.debug
     DRY_RUN = args.dry_run
@@ -264,8 +266,9 @@ def main():
                     if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
                         shutil.move(os.path.join(folder, release.name, file), path)
                         # Check if the source folder is empty and delete it
-                        if not os.listdir(os.path.join(folder, release.name)):
-                            os.rmdir(os.path.join(folder, release.name))
+                        if delete_empty:
+                            if not os.listdir(os.path.join(folder, release.name)):
+                                os.rmdir(os.path.join(folder, release.name))
             else:
                 shutil.move(os.path.join(folder, release.name), path)
 

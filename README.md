@@ -3,7 +3,7 @@
 ## Help
 
 ```
-usage: Movie Release Renamer [-h] [-s {tmdb,srrdb}] [-ds] [-dn] [-d] [-dy] [folder] [output]
+usage: Movie Release Renamer [-h] [-s {tmdb,srrdb}] [-de] [-ds] [-dn] [-d] [-dy] [folder] [output]
 
 positional arguments:
   folder
@@ -12,6 +12,7 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -s {tmdb,srrdb}, --source {tmdb,srrdb}
+  -de, --delete-empty   Delete empty folders after move
   -ds, --srr            Download SRR file from ssrDB ⚠️ NOT IMPLEMENTED
   -dn, --nfo            Download NFO file from ssrDB ⚠️ NOT IMPLEMENTED
   -d, --debug           Enable debug output
