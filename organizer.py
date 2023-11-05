@@ -12,6 +12,7 @@ from srrdb import *
 from tmdb import *
 
 DEBUG = False
+DRY_RUN = False
 
 VALID_EXTENSIONS = [
     'avi',
@@ -45,7 +46,8 @@ def separate(folder_path):
             
             if is_folder:
                 # If the item is a folder, list its contents
-                subfolder_contents = [file for file in os.listdir(folder_path) if file.endswith(tuple(VALID_EXTENSIONS))]
+                subfolder_contents = [file for file in os.listdir(item_path) if file.endswith(tuple(VALID_EXTENSIONS_TO_MOVE))]
+
                 if len(subfolder_contents) != 0:
                     release_objects.append(Release(item, is_folder, subfolder_contents))
             else:
@@ -53,7 +55,8 @@ def separate(folder_path):
                 file_extension = item.split('.')[-1]
                 if file_extension in VALID_EXTENSIONS:
                     release_objects.append(Release(item, is_folder))
-                    print(item)
+                    if DEBUG:
+                        print(item)
 
         return release_objects
     else:
@@ -62,7 +65,8 @@ def separate(folder_path):
 
 def extract_movie_info(release_name):
     # Regular expression pattern to match movie names and release dates
-    pattern = r'(.+?)\.(\d{4})\.'
+    #pattern = r'(.+?)\.(\d{4})\.' # only dot
+    pattern = r'(.+?)[.\s](\d{4})[.\s]' # dot or space
 
     match = re.search(pattern, release_name)
     
@@ -83,13 +87,11 @@ def srrdb(release_name):
         if results_count == 0:
             print("No results found.")
         elif results_count > 1:
-            print("Multiple results found. Please choose which result to use:")
+            print(f"Multiple results found for {release_name}. Please choose which result to use:")
 
-            # Display the options with indices
             for index, result in enumerate(search_result['results'], start=1):
                 print(f"{index}. {result['title']}")
 
-            # Ask the user for their choice
             while True:
                 try:
                     user_choice = int(input("Enter the number of the result to use: "))
@@ -108,7 +110,7 @@ def srrdb(release_name):
         else:
             return None
 
-def extract_tmdb_info(tmdb_data):
+def extract_tmdb_info(release_name, tmdb_data):
     if tmdb_data is None:
         return None, None, None
 
@@ -117,7 +119,8 @@ def extract_tmdb_info(tmdb_data):
             # If there's only one result, return it
             first_movie = tmdb_data['results'][0]
         else:
-            print("Multiple results found. Please select an entry:")
+            print(f"Multiple results found for {release_name}. Please choose which result to use:")
+
             for i, movie in enumerate(tmdb_data['results']):
                 print(f"{i + 1}. {movie['title']} ({movie['release_date']})")
 
@@ -179,6 +182,8 @@ def arguments():
     parser.add_argument('-s', '--source', choices=['tmdb', 'srrdb'], default='tmdb')
     parser.add_argument('-ds', '--srr', help='Download SRR file from ssrDB', action='store_true', default=False)
     parser.add_argument('-dn', '--nfo', help='Download NFO file from ssrDB', action='store_true', default=False)
+    parser.add_argument('-d', '--debug', help='Enable debug output', action='store_true', default=False)
+    parser.add_argument('-dy', '--dry-run', help='Do not make the moves', action='store_true', default=False)
 
     return parser.parse_args()
 
@@ -188,6 +193,9 @@ def main():
     folder = args.folder
     output = args.output
     source = args.source
+
+    DEBUG = args.debug
+    DRY_RUN = args.dry_run
 
     results = separate(folder)
 
@@ -212,12 +220,22 @@ def main():
             print(f"Movie Name: {movie_name}")
             print(f"Release Date: {release_date}")
 
+        # Check if file or folder is tv season or episodes
+        #tv_pattern = r'\.S\d{2}\.' # dot only
+        tv_pattern = r'[.\s]S\d{2}[.\s]' # dot or space
+        tv_matches = re.findall(tv_pattern, release.name)
+        if tv_matches:
+            if DEBUG:
+                print("The file or folder contains the pattern:", tv_matches)
+                print()
+            continue
+        
         if source == "srrdb":
             result = srrdb(release_name)
             renamed_release = rename_release_with_ssrdb(release_name, result)
         elif source == "tmdb":
             tmdb_data = tmdb_search(movie_name, release_date)
-            tmdb_id, tmdb_title, tmdb_release_date = extract_tmdb_info(tmdb_data)
+            tmdb_id, tmdb_title, tmdb_release_date = extract_tmdb_info(release_name, tmdb_data)
 
             if tmdb_id:
                 if DEBUG:
@@ -232,21 +250,26 @@ def main():
 
         print(f"Renamed Release: {renamed_release}")
 
-        path = os.path.join(output, renamed_release)
-
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        if release.is_folder:
-            # Iterate through files in the source folder
-            for file in release.files:
-                if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
-                    shutil.move(os.path.join(folder, release.name, file), path)
-                    # Check if the source folder is empty and delete it
-                    if not os.listdir(os.path.join(folder, release.name)):
-                        os.rmdir(os.path.join(folder, release.name))
+        if DRY_RUN:
+            print(f"Dry run enabled, not moving the files")
         else:
-            shutil.move(os.path.join(folder, release.name), path)
+            path = os.path.join(output, renamed_release)
+
+            if not os.path.exists(path):
+                os.makedirs(path)
+
+            if release.is_folder:
+                # Iterate through files in the source folder
+                for file in release.files:
+                    if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
+                        shutil.move(os.path.join(folder, release.name, file), path)
+                        # Check if the source folder is empty and delete it
+                        if not os.listdir(os.path.join(folder, release.name)):
+                            os.rmdir(os.path.join(folder, release.name))
+            else:
+                shutil.move(os.path.join(folder, release.name), path)
+
+        print("")
 
 if __name__ == "__main__":
     main()
