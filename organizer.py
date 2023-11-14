@@ -174,6 +174,22 @@ def rename_release_with_tmdb(movie_id, movie_name, release_date):
     except ValueError:
         return None
 
+def sanitize_for_windows(input_string):
+    # Define a regex pattern to match characters not allowed in Windows filenames
+    invalid_chars_regex = r'[\/:*?"<>|]'
+
+    # Replace invalid characters with nothing
+    sanitized_string = re.sub(invalid_chars_regex, '', input_string)
+
+    # Remove trailing periods and spaces (Windows does not allow these at the end of folder names)
+    sanitized_string = sanitized_string.rstrip(' .')
+
+    # Ensure the string is not empty after sanitization
+    if not sanitized_string:
+        sanitized_string = '_'
+
+    return sanitized_string
+
 def arguments():
     parser = argparse.ArgumentParser(
                     prog='Movie Release Renamer',
@@ -259,6 +275,7 @@ def main():
             print(f"Dry run enabled, not moving the files")
         else:
             path = os.path.join(output, renamed_release)
+            path = sanitize_for_windows(path)
 
             if not os.path.exists(path):
                 os.makedirs(path)
