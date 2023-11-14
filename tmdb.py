@@ -14,3 +14,13 @@ def tmdb_search(movie_name, release_year):
         return data
     else:
         return None
+
+def tmdb_collection_search(tmdb_id):
+    url = f'https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={API_KEY}'
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data
+    else:
+        return None
