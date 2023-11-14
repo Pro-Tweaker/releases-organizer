@@ -153,6 +153,15 @@ def extract_tmdb_info(release_name, tmdb_data):
     else:
         return None, None, None
 
+def extract_tmdb_collection_info(tmdb_collection_data):
+    if tmdb_collection_data is None:
+        return None, None
+
+    if tmdb_collection_data['belongs_to_collection'] is not None:
+        return tmdb_collection_data['belongs_to_collection']['id'], tmdb_collection_data['belongs_to_collection']['name']
+    else:
+        return None, None
+
 def rename_release_with_ssrdb(release_name, imdb_data):
     # Extract movie name and release date from the IMDb data
     if 'releases' in imdb_data and imdb_data['releases']:
@@ -179,6 +188,15 @@ def rename_release_with_tmdb(movie_id, movie_name, release_date):
         year = str(release_date.year)
 
         return f"{movie_name} ({year}) [tmdbid-{movie_id}]"
+    except ValueError:
+        return None
+
+def rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name):
+    try:
+        if tmdb_collection_id is not None:
+            return f"{tmdb_collection_name} [tmdbid-{tmdb_collection_id}]"
+        else:
+            return None
     except ValueError:
         return None
 
@@ -265,6 +283,9 @@ def main():
         elif source == "tmdb":
             tmdb_data = tmdb_search(movie_name, release_date)
             tmdb_id, tmdb_title, tmdb_release_date = extract_tmdb_info(release_name, tmdb_data)
+            # search for collection information
+            tmdb_collection_data = tmdb_collection_search(tmdb_id)
+            tmdb_collection_id, tmdb_collection_name = extract_tmdb_collection_info(tmdb_collection_data)
 
             if tmdb_id:
                 if DEBUG:
@@ -272,17 +293,26 @@ def main():
                     print(f"ID: {tmdb_id}")
                     print(f"Title: {tmdb_title}")
                     print(f"Release Date: {tmdb_release_date}")
+                    if tmdb_collection_id is not None and tmdb_collection_name is not None:
+                        print(f"Collection ID: {tmdb_collection_id}")
+                        print(f"Collection Name: {tmdb_collection_name}")
                 renamed_release = rename_release_with_tmdb(tmdb_id, tmdb_title, tmdb_release_date)
-                
+                renamed_collection = rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name)
             else:
                 continue
 
         print(f"Renamed Release: {renamed_release}")
+        if renamed_collection:
+            print(f"Renamed Collection: {renamed_collection}")
 
         if DRY_RUN:
             print(f"Dry run enabled, not moving the files")
         else:
-            path = os.path.join(output, renamed_release)
+            if renamed_collection is not None:
+                path = os.path.join(output, renamed_collection, renamed_release)
+            else:
+                path = os.path.join(output, renamed_release)
+
             path = sanitize_for_windows(path)
 
             if not os.path.exists(path):
