@@ -32,6 +32,11 @@ VALID_EXTENSIONS_TO_COPY = [
     'srt',
 ]
 
+PREFER_ORIGINAL_TITLE = [
+    'fr',
+    'es'
+]
+
 class Release:
     def __init__(self, name, is_folder, files=None):
         self.name = name
@@ -138,10 +143,13 @@ def extract_tmdb_info(release_name, tmdb_data):
                 except ValueError:
                     print("Invalid input. Please enter a number.")
 
-        movie_id = first_movie['id']
-        title = first_movie['title']
+        id = first_movie['id']
+        if first_movie['original_language'] in PREFER_ORIGINAL_TITLE:
+            title = first_movie['original_title']
+        else:
+            title = first_movie['title']
         release_date = first_movie['release_date']
-        return movie_id, title, release_date
+        return id, title, release_date
     else:
         return None, None, None
 
