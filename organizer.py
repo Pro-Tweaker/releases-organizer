@@ -323,16 +323,16 @@ def main():
                 # Iterate through files in the source folder
                 for file in release.files:
                     if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_COPY):
-                        copy_file(os.path.join(folder, release.name, file), path)
+                        copy_file(os.path.join(folder, release.name, file), os.path.join(path, file))
                     elif any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
-                        move_file(os.path.join(folder, release.name, file), path)
+                        move_file(os.path.join(folder, release.name, file), os.path.join(path, file))
 
                 # Check if the source folder is empty and delete it
                 if delete_empty:
                     if not os.listdir(os.path.join(folder, release.name)):
                         os.rmdir(os.path.join(folder, release.name))
             else:
-                move_file(os.path.join(folder, release.name, file), path)
+                move_file(os.path.join(folder, release.name), os.path.join(path, release.name))
 
         print("")
 
