@@ -125,7 +125,7 @@ def extract_tmdb_info(release_name, tmdb_data):
             print(f"Multiple results found for {release_name}. Please choose which result to use:")
 
             for i, movie in enumerate(tmdb_data['results']):
-                print(f"{i + 1}. {movie['title']} ({movie['release_date']})")
+                print(f"{i + 1}. {movie['title']} ({movie['release_date']}) - https://www.themoviedb.org/movie/{movie['id']}")
 
             while True:
                 try:
