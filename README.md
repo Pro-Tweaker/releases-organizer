@@ -45,8 +45,22 @@ Recognized media extensions: `avi`, `iso`, `m2ts`, `mk3d`, `mkv`, `mov`, `mp4`, 
 
 Provide your TMDB API key via the `TMDB_API_KEY` environment variable:
 
+Linux/macOS (bash/zsh):
+
 ```
 export TMDB_API_KEY=<your-key>
+```
+
+Windows (PowerShell):
+
+```
+$env:TMDB_API_KEY = "<your-key>"
+```
+
+Windows (cmd):
+
+```
+set TMDB_API_KEY=<your-key>
 ```
 
 ## Usage
