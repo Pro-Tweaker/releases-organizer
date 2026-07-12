@@ -63,6 +63,20 @@ Windows (cmd):
 set TMDB_API_KEY=<your-key>
 ```
 
+## Configuration
+
+For releases in a language listed in `PREFER_ORIGINAL_TITLE`, the original title is used (and
+the title is filed under a per-language folder); otherwise the English title is used. Edit the
+list at the top of [`organizer.py`](organizer.py) to fit your library — use TMDB's two-letter
+language codes:
+
+```python
+PREFER_ORIGINAL_TITLE = [
+    'fr',
+    'es',
+]
+```
+
 ## Usage
 
 ```
