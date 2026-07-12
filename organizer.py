@@ -17,16 +17,28 @@ DRY_RUN = False
 
 VALID_EXTENSIONS = [
     'avi',
-    'mp4',
+    'iso',
+    'm2ts',
+    'mk3d',
     'mkv',
-    'mk3d'
+    'mov',
+    'mp4',
+    'mpeg',
+    'mpg',
+    'ts'
 ]
 
 VALID_EXTENSIONS_TO_MOVE = [
     'avi',
-    'mp4',
-    'mkv',
+    'iso',
+    'm2ts',
     'mk3d',
+    'mkv',
+    'mov',
+    'mp4',
+    'mpeg',
+    'mpg',
+    'ts'
 ]
 
 VALID_EXTENSIONS_TO_COPY = [
@@ -38,11 +50,49 @@ PREFER_ORIGINAL_TITLE = [
     'es'
 ]
 
+# A release is treated as TV when its name carries a season pack or episode marker
+TV_PATTERN = r'[.\s]S\d{2}(?:E\d{2})?[.\s]' # dot or space, season pack or episode
+
 class Release:
     def __init__(self, name, is_folder, files=None):
         self.name = name
         self.is_folder = is_folder
         self.files = files
+
+# Sub-directories inside a release that never hold the actual media
+JUNK_DIRS = ('sample', 'proof', 'screens', 'screenshots')
+
+def collect_valid_files(folder_path):
+    # Walk the release recursively (scene TV packs nest each episode in its own
+    # sub-folder) and return valid files as paths relative to the release folder.
+    valid_exts = tuple(VALID_EXTENSIONS_TO_MOVE) + tuple(VALID_EXTENSIONS_TO_COPY)
+    collected = []
+    for root, dirs, files in os.walk(folder_path):
+        dirs[:] = [d for d in dirs if d.lower() not in JUNK_DIRS]
+        for name in files:
+            if 'sample' in name.lower():
+                continue
+            if name.endswith(valid_exts):
+                collected.append(os.path.relpath(os.path.join(root, name), folder_path))
+    return collected
+
+def remove_empty_dirs(root):
+    # Remove empty sub-directories bottom-up, then the root itself if it is empty.
+    for dirpath, _, _ in os.walk(root, topdown=False):
+        try:
+            if not os.listdir(dirpath):
+                os.rmdir(dirpath)
+        except OSError:
+            pass
+
+def sibling_subtitles(folder_path, video_name):
+    # Loose subtitle files that belong to a loose video by sharing its base name,
+    # e.g. "Movie.2022.x264-GRP.mkv" -> "Movie.2022.x264-GRP.FR.srt". The dot check
+    # keeps "Movie.1080p" from claiming "Movie.1080p.Extended"'s subtitles.
+    stem = os.path.splitext(video_name)[0]
+    return [f for f in os.listdir(folder_path)
+            if f != video_name and f.endswith(tuple(VALID_EXTENSIONS_TO_COPY))
+            and f[:len(stem)] == stem and f[len(stem):len(stem) + 1] == '.']
 
 def separate(folder_path):
     if os.path.exists(folder_path) and os.path.isdir(folder_path):
@@ -52,10 +102,10 @@ def separate(folder_path):
         for item in contents:
             item_path = os.path.join(folder_path, item)
             is_folder = os.path.isdir(item_path)
-            
+
             if is_folder:
-                # If the item is a folder, list its contents
-                subfolder_contents = [file for file in os.listdir(item_path) if file.endswith(tuple(VALID_EXTENSIONS_TO_MOVE)) or file.endswith(tuple(VALID_EXTENSIONS_TO_COPY))]
+                # If the item is a folder, list its contents (recursively)
+                subfolder_contents = collect_valid_files(item_path)
 
                 if len(subfolder_contents) != 0:
                     release_objects.append(Release(item, is_folder, subfolder_contents))
@@ -72,15 +122,29 @@ def separate(folder_path):
         print("The specified folder does not exist.")
         return []
 
+def normalize_aka(text):
+    # Normalise "A.k.a." / "a.k.a" style tokens to a plain AKA marker
+    return re.sub(r'(?i)(?<![a-z0-9])a\.?k\.?a\.?(?![a-z0-9])', 'AKA', text)
+
+def strip_aka(name):
+    # When a title carries an "AKA", keep only the title after the last marker
+    # (e.g. "Foreign.Title.AKA.English.Title" -> "English.Title")
+    if re.search(r'(?<![A-Za-z0-9])AKA(?![A-Za-z0-9])', name):
+        return re.split(r'(?<![A-Za-z0-9])AKA(?![A-Za-z0-9])', name)[-1]
+    return name
+
 def extract_movie_info(release_name):
+    normalized = normalize_aka(release_name)
+
     # Regular expression pattern to match movie names and release dates
     #pattern = r'(.+?)\.(\d{4})\.' # only dot
     pattern = r'(.+?)[.\s](\d{4})[.\s]' # dot or space
 
-    match = re.search(pattern, release_name)
-    
+    match = re.search(pattern, normalized)
+
     if match:
-        movie_name = match.group(1).replace('.', ' ')
+        # When the title carries an "AKA", keep only the title next to the year
+        movie_name = strip_aka(match.group(1)).replace('.', ' ').strip()
         release_date = match.group(2)
     else:
         # If no match is found, set default values
@@ -99,14 +163,14 @@ def srrdb(release_name):
             print(f"Multiple results found for {release_name}. Please choose which result to use:")
 
             for index, result in enumerate(search_result['results'], start=1):
-                print(f"{index}. {result['title']}")
+                print(f"{index}. {result['release']}")
 
             while True:
                 try:
                     user_choice = int(input("Enter the number of the result to use: "))
                     if 1 <= user_choice <= results_count:
                         selected_result = search_result['results'][user_choice - 1]
-                        print(f"You selected: {selected_result['title']}")
+                        print(f"You selected: {selected_result['release']}")
                         break
                     else:
                         print("Invalid choice. Please enter a valid number.")
@@ -121,7 +185,7 @@ def srrdb(release_name):
 
 def extract_tmdb_info(release_name, tmdb_data):
     if tmdb_data is None:
-        return None, None, None
+        return None, None, None, None
 
     if 'total_results' in tmdb_data and tmdb_data['total_results'] > 0:
         if tmdb_data['total_results'] == 1:
@@ -147,12 +211,14 @@ def extract_tmdb_info(release_name, tmdb_data):
         id = first_movie['id']
         if first_movie['original_language'] in PREFER_ORIGINAL_TITLE:
             title = first_movie['original_title']
+            output_per_language = first_movie['original_language']
         else:
             title = first_movie['title']
+            output_per_language = "en"
         release_date = first_movie['release_date']
-        return id, title, release_date
+        return id, title, release_date, output_per_language
     else:
-        return None, None, None
+        return None, None, None, None
 
 def extract_tmdb_collection_info(tmdb_collection_data):
     if tmdb_collection_data is None:
@@ -201,6 +267,87 @@ def rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name):
     except ValueError:
         return None
 
+def extract_tv_info(release_name):
+    normalized = normalize_aka(release_name)
+
+    # Match "Series Name . SxxExx" or "Series Name . Sxx" (season part captured)
+    pattern = r'(.+?)[.\s]S(\d{1,2})(?:E\d{1,2})?[.\s]'
+    match = re.search(pattern, normalized, re.IGNORECASE)
+
+    if not match:
+        return "Unknown Series", None, None
+
+    # When the title carries an "AKA", keep only the title next to the season marker
+    raw_name = strip_aka(match.group(1))
+    season = int(match.group(2))
+
+    # Pull a trailing year token out of the series name if present (e.g. "Series.Name.2019")
+    year = None
+    year_match = re.search(r'^(.*?)[.\s](19\d{2}|20\d{2})$', raw_name)
+    if year_match:
+        raw_name = year_match.group(1)
+        year = year_match.group(2)
+
+    series_name = raw_name.replace('.', ' ').strip()
+    return series_name, year, season
+
+def extract_tmdb_tv_info(release_name, tv_data):
+    if tv_data is None:
+        return None, None, None, None
+
+    if 'total_results' in tv_data and tv_data['total_results'] > 0:
+        if tv_data['total_results'] == 1:
+            # If there's only one result, return it
+            first_show = tv_data['results'][0]
+        else:
+            print(f"Multiple results found for {release_name}. Please choose which result to use:")
+
+            for i, show in enumerate(tv_data['results']):
+                print(f"{i + 1}. {show['name']} ({show.get('first_air_date', 'N/A')}) - https://www.themoviedb.org/tv/{show['id']}")
+
+            while True:
+                try:
+                    choice = int(input("Enter the number of the result to use: "))
+                    if 1 <= choice <= len(tv_data['results']):
+                        first_show = tv_data['results'][choice - 1]
+                        break
+                    else:
+                        print("Invalid choice. Please enter a valid number.")
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
+
+        id = first_show['id']
+        if first_show.get('original_language') in PREFER_ORIGINAL_TITLE:
+            title = first_show['original_name']
+            output_per_language = first_show['original_language']
+        else:
+            title = first_show['name']
+            output_per_language = "en"
+        first_air_date = first_show.get('first_air_date', '')
+        return id, title, first_air_date, output_per_language
+    else:
+        return None, None, None, None
+
+def rename_series_with_tmdb(series_id, series_name, first_air_date):
+    try:
+        # Parse the air date string and keep the year; Jellyfin allows omitting it
+        year = datetime.strptime(first_air_date, "%Y-%m-%d").year
+        return f"{series_name} ({year}) [tmdbid-{series_id}]"
+    except (ValueError, TypeError):
+        return f"{series_name} [tmdbid-{series_id}]"
+
+def season_from_filename(filename):
+    # Prefer the SxxExx marker, fall back to a bare Sxx (season packs)
+    match = re.search(r'S(\d{1,2})E\d{1,2}', filename, re.IGNORECASE)
+    if not match:
+        match = re.search(r'[.\s_-]S(\d{1,2})[.\s_-]', filename, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return None
+
+def season_folder(season_number):
+    return f"Season {int(season_number):02d}"
+
 def sanitize_for_windows(input_string):
     # Define a regex pattern to match characters not allowed in Windows filenames
     invalid_chars_regex = r'[\/:*?"<>|]'
@@ -217,6 +364,158 @@ def sanitize_for_windows(input_string):
 
     return sanitized_string
 
+def movie_destination(output, language, renamed_collection, renamed_release):
+    if renamed_collection is not None:
+        return os.path.join(output, "movies", language, sanitize_for_windows(renamed_collection), sanitize_for_windows(renamed_release))
+    return os.path.join(output, "movies", language, sanitize_for_windows(renamed_release))
+
+def tv_destination(output, language, renamed_series, season):
+    return os.path.join(output, "tv", language, sanitize_for_windows(renamed_series), season_folder(season))
+
+def classify_release(release):
+    # Parse a release with no network access: what it is and how it reads
+    if release.is_folder:
+        release_name = release.name
+        files = release.files
+    else:
+        release_name = os.path.splitext(release.name)[0]
+        files = [release.name]
+
+    if re.findall(TV_PATTERN, release.name):
+        series_name, series_year, _ = extract_tv_info(release_name)
+        seasons = {}
+        for f in files:
+            seasons.setdefault(season_from_filename(os.path.basename(f)), []).append(os.path.basename(f))
+        parsed_ok = series_name != "Unknown Series" and any(s is not None for s in seasons)
+        return {'kind': 'tv', 'release': release.name, 'name': series_name,
+                'year': series_year, 'seasons': seasons, 'parsed_ok': parsed_ok}
+
+    movie_name, year = extract_movie_info(release_name)
+    parsed_ok = movie_name != "Unknown Movie" and year != "YearUnknown"
+    return {'kind': 'movie', 'release': release.name, 'name': movie_name,
+            'year': year, 'parsed_ok': parsed_ok}
+
+def normalize_name(name):
+    # spaces -> dots, strip parentheses, and rewrite "1x01" episode numbering to
+    # SxxExx (Jellyfin handles S01E01 far better than the 1x01 form)
+    name = re.sub(r'(?<!\d)(\d{1,2})x(\d{2,3})(?!\d)',
+                  lambda m: f"S{int(m.group(1)):02d}E{m.group(2)}", name)
+    return name.replace(' ', '.').replace('(', '').replace(')', '')
+
+def normalize_input(folder_path, dry_run=False):
+    # Python port of Releases-renamer.ps1, scoped to folder_path:
+    # 1) normalise names (spaces->dots, strip parens, 1x01->S01E01),
+    # 2) wrap loose media in a folder
+    if not os.path.isdir(folder_path):
+        print("The specified folder does not exist.")
+        return
+
+    # 1. Rename bottom-up so renamed parents never invalidate child paths
+    for root, dirs, files in os.walk(folder_path, topdown=False):
+        for name in files + dirs:
+            new_name = normalize_name(name)
+            if new_name == name:
+                continue
+            src, dst = os.path.join(root, name), os.path.join(root, new_name)
+            if dry_run:
+                print(f"[normalize] rename: {name} -> {new_name}")
+            elif os.path.exists(dst):
+                print(f"[normalize] skip (target exists): {new_name}")
+            else:
+                os.rename(src, dst)
+
+    # 2. Wrap each loose top-level media file in a folder named after it
+    for name in os.listdir(folder_path):
+        path = os.path.join(folder_path, name)
+        if not (os.path.isfile(path) and name.endswith(tuple(VALID_EXTENSIONS_TO_MOVE))):
+            continue
+        stem = os.path.splitext(name)[0]
+        dest_dir = os.path.join(folder_path, stem)
+        subs = sibling_subtitles(folder_path, name)
+        if dry_run:
+            print(f"[normalize] folder: {name} -> {stem}/{name}")
+            for sub in subs:
+                print(f"[normalize] folder: {sub} -> {stem}/{sub}")
+            continue
+        os.makedirs(dest_dir, exist_ok=True)
+        move_file(path, os.path.join(dest_dir, name))
+        for sub in subs:
+            move_file(os.path.join(folder_path, sub), os.path.join(dest_dir, sub))
+
+def resolve_release(info, output, source):
+    # Look a parsed release up on TMDB (single result only, never prompts) and
+    # return (status, destination_path_or_None) for the report.
+    if info['kind'] == 'movie':
+        if source == 'srrdb':
+            return "SKIP (srrdb not checked)", None
+        data = tmdb_search(info['name'], info['year'])
+        if not data or data.get('total_results', 0) == 0:
+            return "NO TMDB MATCH", None
+        if data['total_results'] > 1:
+            return f"AMBIGUOUS ({data['total_results']} matches)", None
+        tid, title, rdate, lang = extract_tmdb_info(info['release'], data)
+        renamed = rename_release_with_tmdb(tid, title, rdate)
+        if not renamed:
+            return "BAD RELEASE DATE", None
+        cid, cname = extract_tmdb_collection_info(tmdb_collection_search(tid))
+        renamed_coll = rename_collection_with_tmdb(cid, cname)
+        return "OK", movie_destination(output, lang, renamed_coll, renamed)
+
+    data = tmdb_tv_search(info['name'], info['year'])
+    if not data or data.get('total_results', 0) == 0:
+        return "NO TMDB MATCH", None
+    if data['total_results'] > 1:
+        return f"AMBIGUOUS ({data['total_results']} matches)", None
+    tid, title, air, lang = extract_tmdb_tv_info(info['release'], data)
+    renamed = rename_series_with_tmdb(tid, title, air)
+    seasons = sorted(s for s in info['seasons'] if s is not None)
+    if not seasons:
+        return "NO SEASON DETERMINED", None
+    season_list = ", ".join(f"{s:02d}" for s in seasons)
+    return f"OK (seasons {season_list})", os.path.join(output, "tv", lang, sanitize_for_windows(renamed))
+
+def run_report(releases, output, source, full=False):
+    mode = "check-full" if full else "check-syntax"
+    print(f"=== {mode}: {len(releases)} release(s) ===\n")
+    counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'resolved': 0, 'failed': 0}
+
+    for release in releases:
+        info = classify_release(release)
+        counts[info['kind']] += 1
+
+        if info['kind'] == 'tv':
+            season_desc = ", ".join(
+                (f"S{s:02d}" if s is not None else "S??") + f"({len(v)})"
+                for s, v in sorted(info['seasons'].items(), key=lambda x: (x[0] is None, x[0])))
+            print(f"TV   {info['release']}")
+            print(f"     -> {info['name']} ({info['year'] or '----'})  seasons: {season_desc}")
+        else:
+            print(f"MOV  {info['release']}")
+            print(f"     -> {info['name']} ({info['year']})")
+
+        if not info['parsed_ok']:
+            counts['unparsed'] += 1
+            print("     STATUS: SKIP (could not parse)\n")
+            continue
+
+        if not full:
+            print("     STATUS: parsed\n")
+            continue
+
+        status, dest = resolve_release(info, output, source)
+        if dest:
+            counts['resolved'] += 1
+            print(f"     STATUS: {status}")
+            print(f"     DEST:   {dest}\n")
+        else:
+            counts['failed'] += 1
+            print(f"     STATUS: {status}\n")
+
+    print("=== summary ===")
+    print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}")
+    if full:
+        print(f"resolved: {counts['resolved']}   failed: {counts['failed']}")
+
 def arguments():
     parser = argparse.ArgumentParser(
                     prog='Movie Release Renamer',
@@ -231,6 +530,9 @@ def arguments():
     parser.add_argument('-dn', '--nfo', help='Download NFO file from ssrDB', action='store_true', default=False)
     parser.add_argument('-d', '--debug', help='Enable debug output', action='store_true', default=False)
     parser.add_argument('-dy', '--dry-run', help='Do not make the moves', action='store_true', default=False)
+    parser.add_argument('-n', '--normalize', help='Pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing', action='store_true', default=False)
+    parser.add_argument('-cs', '--check-syntax', help='Offline: report how each release parses, no TMDB, no moves', action='store_true', default=False)
+    parser.add_argument('-cf', '--check-full', help='Report parsing + TMDB match + destination path, no moves', action='store_true', default=False)
 
     return parser.parse_args()
 
@@ -241,11 +543,27 @@ def main():
     output = args.output
     source = args.source
     delete_empty = args.delete_empty
+    download_srr = args.srr
+    download_nfo = args.nfo
 
     DEBUG = args.debug
     DRY_RUN = args.dry_run
 
+    # TMDB is needed for TV (always) and for movies unless --source srrdb.
+    # --check-syntax is fully offline, so it is the only mode that never needs a key.
+    if API_KEY == 'YOUR_TMDB_API_KEY' and not args.check_syntax:
+        print("WARNING: TMDB_API_KEY is not set - TMDB lookups will fail.")
+        print("         Set it with:  export TMDB_API_KEY=<your-key>")
+        print()
+
+    if args.normalize:
+        normalize_input(folder, DRY_RUN)
+
     results = separate(folder)
+
+    if args.check_syntax or args.check_full:
+        run_report(results, output, source, full=args.check_full)
+        return
 
     for release in results:
 
@@ -270,20 +588,87 @@ def main():
 
         # Check if file or folder is tv season or episodes
         #tv_pattern = r'\.S\d{2}\.' # dot only
-        tv_pattern = r'[.\s]S\d{2}[.\s]' # dot or space
+        tv_pattern = r'[.\s]S\d{2}(?:E\d{2})?[.\s]' # dot or space, season pack or episode
         tv_matches = re.findall(tv_pattern, release.name)
         if tv_matches:
             if DEBUG:
                 print("The file or folder contains the pattern:", tv_matches)
                 print()
+
+            series_name, series_year, _ = extract_tv_info(release_name)
+
+            if DEBUG:
+                print(f"Series Name: {series_name}")
+                print(f"Series Year: {series_year}")
+
+            tv_data = tmdb_tv_search(series_name, series_year)
+            tv_id, tv_title, tv_first_air_date, tv_language = extract_tmdb_tv_info(release_name, tv_data)
+
+            if not tv_id:
+                print(f"No TMDb series match for {release_name}")
+                print("")
+                continue
+
+            renamed_series = rename_series_with_tmdb(tv_id, tv_title, tv_first_air_date)
+            print(f"Renamed Series: {renamed_series}")
+            if DEBUG:
+                print(f"Language set: {tv_language}")
+
+            if DRY_RUN:
+                print("Dry run enabled, not moving the files")
+                print("")
+                continue
+
+            # Collect the episode files (a season pack folder, or a single episode file)
+            if release.is_folder:
+                source_dir = os.path.join(folder, release.name)
+                episode_files = release.files
+            else:
+                source_dir = folder
+                episode_files = [release.name]
+
+            for file in episode_files:
+                # file may be a nested relative path; the season and the destination
+                # name come from the file's own base name, flattening any sub-folders
+                base = os.path.basename(file)
+                season = season_from_filename(base)
+                if season is None:
+                    print(f"Could not determine season for {base}, skipping.")
+                    continue
+
+                # Keep the original file name; only the series/season folders are created
+                season_dir = tv_destination(output, tv_language, renamed_series, season)
+                if not os.path.exists(season_dir):
+                    os.makedirs(season_dir)
+
+                source_file = os.path.join(source_dir, file)
+                destination_file = os.path.join(season_dir, base)
+                if any(base.endswith(ext) for ext in VALID_EXTENSIONS_TO_COPY):
+                    copy_file(source_file, destination_file)
+                elif any(base.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
+                    move_file(source_file, destination_file)
+
+                # A loose episode may have loose sibling subtitles next to it
+                if not release.is_folder:
+                    for sub in sibling_subtitles(folder, release.name):
+                        copy_file(os.path.join(folder, sub), os.path.join(season_dir, sub))
+
+            # Remove the source folder if it is now empty
+            if release.is_folder and delete_empty:
+                remove_empty_dirs(os.path.join(folder, release.name))
+
+            print("")
             continue
         
+        renamed_collection = None
+        tmdb_language = "en"
+
         if source == "srrdb":
             result = srrdb(release_name)
             renamed_release = rename_release_with_ssrdb(release_name, result)
         elif source == "tmdb":
             tmdb_data = tmdb_search(movie_name, release_date)
-            tmdb_id, tmdb_title, tmdb_release_date = extract_tmdb_info(release_name, tmdb_data)
+            tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
             # search for collection information
             tmdb_collection_data = tmdb_collection_search(tmdb_id)
             tmdb_collection_id, tmdb_collection_name = extract_tmdb_collection_info(tmdb_collection_data)
@@ -294,6 +679,7 @@ def main():
                     print(f"ID: {tmdb_id}")
                     print(f"Title: {tmdb_title}")
                     print(f"Release Date: {tmdb_release_date}")
+                    print(f"Language set: {tmdb_language}")
                     if tmdb_collection_id is not None and tmdb_collection_name is not None:
                         print(f"Collection ID: {tmdb_collection_id}")
                         print(f"Collection Name: {tmdb_collection_name}")
@@ -308,31 +694,40 @@ def main():
 
         if DRY_RUN:
             print(f"Dry run enabled, not moving the files")
+            if download_srr:
+                print(f"Dry run enabled, not downloading SRR for {release_name}")
+            if download_nfo:
+                print(f"Dry run enabled, not downloading NFO for {release_name}")
         else:
-            if renamed_collection is not None:
-                path = os.path.join(output, renamed_collection, renamed_release)
-            else:
-                path = os.path.join(output, renamed_release)
-
-            path = sanitize_for_windows(path)
+            path = movie_destination(output, tmdb_language, renamed_collection, renamed_release)
 
             if not os.path.exists(path):
                 os.makedirs(path)
 
             if release.is_folder:
-                # Iterate through files in the source folder
+                # Iterate through files in the source folder (may be nested); the
+                # destination keeps only the base name, flattening any sub-folders
                 for file in release.files:
-                    if any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_COPY):
-                        copy_file(os.path.join(folder, release.name, file), os.path.join(path, file))
-                    elif any(file.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
-                        move_file(os.path.join(folder, release.name, file), os.path.join(path, file))
+                    base = os.path.basename(file)
+                    source_file = os.path.join(folder, release.name, file)
+                    if any(base.endswith(ext) for ext in VALID_EXTENSIONS_TO_COPY):
+                        copy_file(source_file, os.path.join(path, base))
+                    elif any(base.endswith(ext) for ext in VALID_EXTENSIONS_TO_MOVE):
+                        move_file(source_file, os.path.join(path, base))
 
                 # Check if the source folder is empty and delete it
                 if delete_empty:
-                    if not os.listdir(os.path.join(folder, release.name)):
-                        os.rmdir(os.path.join(folder, release.name))
+                    remove_empty_dirs(os.path.join(folder, release.name))
             else:
                 move_file(os.path.join(folder, release.name), os.path.join(path, release.name))
+                # A loose video may have loose sibling subtitles next to it
+                for sub in sibling_subtitles(folder, release.name):
+                    copy_file(os.path.join(folder, sub), os.path.join(path, sub))
+
+            if download_srr:
+                srrdb_download_srr(release_name, path)
+            if download_nfo:
+                srrdb_download_nfo(release_name, path)
 
         print("")
 
