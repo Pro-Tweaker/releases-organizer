@@ -98,6 +98,11 @@ options:
   -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing
   -cs, --check-syntax   offline: report how each release parses (no TMDB, no moves)
   -cf, --check-full     report parsing + TMDB match + destination path (no moves)
+  -vl, --verify-library
+                        offline: audit an already-organized library for naming/structure
+                        mistakes (no TMDB, no moves)
+  -vlo, --verify-library-online
+                        online: run --verify-library plus live TMDB drift checks (no moves)
 ```
 
 Notes:
@@ -108,6 +113,19 @@ Notes:
   (except in `--check-full`, which is non-interactive and flags it as `AMBIGUOUS`).
 - `--normalize` is a pre-pass that runs before scanning. It modifies the source folder unless
   `--dry-run` is also given, and it applies even when combined with `--check-syntax`/`--check-full`.
+- `--verify-library` is a different job from `--check-syntax`/`--check-full`: those preview how
+  *raw, not-yet-organized* releases would be parsed, while `--verify-library` audits a folder
+  that's already in (or supposed to be in) this tool's own output layout — e.g. `movies/en/` or
+  `tv/fr/` from a previous run, or a library built by hand. It never contacts TMDB/srrDB and never
+  touches the filesystem.
+- `--verify-library-online` runs everything `--verify-library` does, plus a live TMDB lookup for
+  every tagged movie, series, and collection folder by its `[tmdbid-…]`, to catch drift that
+  builds up over time even when the local naming is perfectly formed: a mistyped id, an id whose
+  TMDB entry was deleted or merged, a title/year that changed on TMDB, or a movie whose collection
+  membership changed (newly added to a collection but filed as standalone, or dropped from/no
+  longer matching the collection folder it's filed under). It requires `TMDB_API_KEY` and still
+  never touches the filesystem. `[imdbid-tt…]` (srrDB) movie folders are skipped, since they were
+  never matched against TMDB in the first place.
 
 ## Examples
 
@@ -145,6 +163,21 @@ Verify TMDB matches and preview destination paths, no moves:
 
 ```
 python organizer.py ~/Downloads ~/Media --check-full
+```
+
+Audit an already-organized library for naming/structure mistakes (typos, bad `Season NN`
+padding, missing `[tmdbid-…]`/`[imdbid-…]` tags, misplaced episode files, …). Fully offline,
+read-only, prints only problems (in red) plus a final summary:
+
+```
+python organizer.py ~/Media --verify-library
+```
+
+Same audit, plus a live check against TMDB for every tagged folder (mistyped/dead ids, title or
+year drift, collection membership changes). Needs `TMDB_API_KEY`, still read-only:
+
+```
+python organizer.py ~/Media --verify-library-online
 ```
 
 Use srrDB (IMDb ids) and grab the .nfo for each movie:
