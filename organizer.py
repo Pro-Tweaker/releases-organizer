@@ -764,6 +764,12 @@ def verify_library(root, online=False):
     if counts['errors'] == 0:
         print(f"{ANSI_GREEN}Everything looks good - no problems found.{ANSI_RESET}")
 
+def print_tmdb_api_key_help():
+    print("         Set it with:")
+    print("           Linux/macOS (bash/zsh):  export TMDB_API_KEY=<your-key>")
+    print("           Windows (PowerShell):    $env:TMDB_API_KEY = \"<your-key>\"")
+    print("           Windows (cmd):           set TMDB_API_KEY=<your-key>")
+
 def arguments():
     parser = argparse.ArgumentParser(
                     prog='Movie Release Renamer',
@@ -805,13 +811,13 @@ def main():
     if (API_KEY == 'YOUR_TMDB_API_KEY' and not args.check_syntax and not args.verify_library
             and not args.verify_library_online):
         print("WARNING: TMDB_API_KEY is not set - TMDB lookups will fail.")
-        print("         Set it with:  export TMDB_API_KEY=<your-key>")
+        print_tmdb_api_key_help()
         print()
 
     if args.verify_library_online:
         if API_KEY == 'YOUR_TMDB_API_KEY':
             print("TMDB_API_KEY is not set - --verify-library-online requires a working TMDB API key.")
-            print("         Set it with:  export TMDB_API_KEY=<your-key>")
+            print_tmdb_api_key_help()
             return
         verify_library(folder, online=True)
         return
