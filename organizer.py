@@ -53,6 +53,27 @@ PREFER_ORIGINAL_TITLE = [
 # A release is treated as TV when its name carries a season pack or episode marker
 TV_PATTERN = r'[.\s]S\d{2}(?:E\d{2})?[.\s]' # dot or space, season pack or episode
 
+# --verify-library: patterns describing this tool's own output naming convention, used to lint an
+# already-organized (or hand-built) library instead of parsing raw scene release names.
+SEASON_NAME_RE = re.compile(r'^Season \d{2}$')
+SEASON_LIKE_RE = re.compile(r'(?i)^season')
+COLLECTION_NAME_RE = re.compile(r'^(?P<title>.+) \[tmdbid-(?P<id>\d+)\]$')
+MOVIE_TMDB_NAME_RE = re.compile(r'^(?P<title>.+) \((?P<year>\d{4})\) \[tmdbid-(?P<id>\d+)\]$')
+MOVIE_IMDB_NAME_RE = re.compile(r'^.+ \((?:\d{4}|YearUnknown)\) \[imdbid-tt\d+\]$')
+SERIES_NAME_RE = re.compile(r'^(?P<title>.+?)(?: \((?P<year>\d{4})\))? \[tmdbid-(?P<id>\d+)\]$')
+KNOWN_CONTAINER_RE = re.compile(r'(?i)^(movies|tv)$')
+LANGUAGE_CODE_RE = re.compile(r'^[A-Za-z]{2}(-[A-Za-z]{2})?$')
+
+ANSI_RED = "\x1b[31m"
+ANSI_GREEN = "\x1b[32m"
+ANSI_RESET = "\x1b[0m"
+
+# Sentinel for _verify_movie_online: the movie's parent collection folder name is itself
+# malformed, so there's no reliable expected collection id to compare against - the name
+# problem is already reported at the collection folder itself, don't cascade a second,
+# confusing "filed as standalone" error onto every movie inside it.
+PARENT_COLLECTION_UNKNOWN = object()
+
 class Release:
     def __init__(self, name, is_folder, files=None):
         self.name = name
@@ -516,6 +537,233 @@ def run_report(releases, output, source, full=False):
     if full:
         print(f"resolved: {counts['resolved']}   failed: {counts['failed']}")
 
+def _report_problem(path, message, counts):
+    counts['errors'] += 1
+    # Blank line whenever we move from one folder's group of problems to another's, so a run
+    # against a large library reads as separate blocks per offending folder instead of a wall of text
+    group = counts.get('current_group')
+    if counts.get('last_printed_group') is not None and counts['last_printed_group'] != group:
+        print()
+    counts['last_printed_group'] = group
+    print(f"{ANSI_RED}ERROR{ANSI_RESET}: {path}\n       {message}")
+
+def _is_pass_through_folder(name):
+    # movies/, tv/, and a bare language code (en, fr, pt-BR, ...) are containers this tool
+    # creates but never itself names per-release, so they're never validated - only descended into
+    return bool(KNOWN_CONTAINER_RE.match(name) or LANGUAGE_CODE_RE.match(name))
+
+def _is_video_file(filename):
+    return filename.lower().endswith(tuple(VALID_EXTENSIONS)) and 'sample' not in filename.lower()
+
+def _bracket_mismatch(name):
+    # Catches typos like a missing closing paren/bracket (e.g. "Show (2018 [tmdbid-1]") that
+    # would otherwise slip through the naming regexes, since '(' and '[' are also valid
+    # characters within a free-form title
+    return name.count('(') != name.count(')') or name.count('[') != name.count(']')
+
+def _pick_movie_title(data):
+    if data.get('original_language') in PREFER_ORIGINAL_TITLE:
+        return data.get('original_title')
+    return data.get('title')
+
+def _pick_series_title(data):
+    if data.get('original_language') in PREFER_ORIGINAL_TITLE:
+        return data.get('original_name')
+    return data.get('name')
+
+def _report_name_mismatch(path, local_name, expected_name, counts):
+    _report_problem(path,
+        f'does not match current TMDB data (local: "{local_name}", expected: "{expected_name}")', counts)
+
+def _verify_movie_online(path, name, match, parent_collection_id, counts):
+    data = tmdb_get_movie_by_id(match.group('id'))
+    if data is False:
+        _report_problem(path, 'TMDB id no longer exists (movie may have been deleted or merged)', counts)
+        return
+    if data is None:
+        _report_problem(path, 'could not verify against TMDB (network/API error)', counts)
+        return
+
+    # Rebuild the name exactly the way it was first created (rename_release_with_tmdb + the same
+    # sanitize_for_windows pass tv_destination/movie_destination apply) and compare the whole
+    # thing, rather than the title/year fragments in isolation - sanitizing an isolated title
+    # fragment strips trailing punctuation ("Broute 24." -> "Broute 24") that is only trailing
+    # relative to the title, not to the full folder name, causing false-positive mismatches
+    expected = rename_release_with_tmdb(match.group('id'), _pick_movie_title(data), data.get('release_date'))
+    if expected is None:
+        _report_problem(path, 'TMDB no longer provides a valid release date to verify against', counts)
+    else:
+        expected = sanitize_for_windows(expected)
+        if expected != name:
+            _report_name_mismatch(path, name, expected, counts)
+
+    collection = data.get('belongs_to_collection')
+    if parent_collection_id is PARENT_COLLECTION_UNKNOWN:
+        pass # enclosing collection folder's own id couldn't be determined; already reported there
+    elif parent_collection_id is None:
+        if collection is not None:
+            _report_problem(path,
+                f'movie now belongs to TMDB collection "{collection["name"]}" [tmdbid-{collection["id"]}] '
+                'but is filed as a standalone movie', counts)
+    elif collection is None:
+        _report_problem(path,
+            'movie no longer belongs to any TMDB collection, but is filed under a collection folder', counts)
+    elif str(collection['id']) != str(parent_collection_id):
+        _report_problem(path,
+            f'movie belongs to TMDB collection [tmdbid-{collection["id"]}] but is filed under '
+            f'collection [tmdbid-{parent_collection_id}]', counts)
+
+def _verify_series_online(path, name, match, counts):
+    data = tmdb_get_tv_by_id(match.group('id'))
+    if data is False:
+        _report_problem(path, 'TMDB id no longer exists (series may have been deleted or merged)', counts)
+        return
+    if data is None:
+        _report_problem(path, 'could not verify against TMDB (network/API error)', counts)
+        return
+
+    expected = sanitize_for_windows(
+        rename_series_with_tmdb(match.group('id'), _pick_series_title(data), data.get('first_air_date')))
+    if expected != name:
+        _report_name_mismatch(path, name, expected, counts)
+
+def _verify_collection_online(path, name, match, counts):
+    data = tmdb_get_collection_by_id(match.group('id'))
+    if data is False:
+        _report_problem(path,
+            'TMDB collection id no longer exists (deleted, merged, or was never official)', counts)
+        return
+    if data is None:
+        _report_problem(path, 'could not verify against TMDB (network/API error)', counts)
+        return
+
+    expected = sanitize_for_windows(rename_collection_with_tmdb(match.group('id'), data.get('name')))
+    if expected != name:
+        _report_name_mismatch(path, name, expected, counts)
+
+def _verify_season_folder(entry, counts):
+    counts['folders'] += 1
+    counts['current_group'] = entry.path
+    if not SEASON_NAME_RE.match(entry.name):
+        _report_problem(entry.path,
+            'season folder name does not match "Season NN" (zero-padded, e.g. "Season 02")', counts)
+
+    try:
+        children = list(os.scandir(entry.path))
+    except OSError as e:
+        _report_problem(entry.path, f'could not read folder: {e}', counts)
+        return
+
+    subdirs = [c for c in children if c.is_dir()]
+    media_files = [c for c in children if c.is_file() and _is_video_file(c.name)]
+
+    if subdirs:
+        _report_problem(entry.path, 'unexpected sub-folder inside a season folder', counts)
+    if not media_files:
+        _report_problem(entry.path, 'season folder contains no video files', counts)
+        return
+
+    season_match = SEASON_NAME_RE.match(entry.name)
+    season_num = int(season_match.group(0).split()[1]) if season_match else None
+
+    for f in media_files:
+        counts['files'] += 1
+        season = season_from_filename(f.name)
+        if season is None:
+            _report_problem(f.path, 'episode file name has no SxxExx/Sxx season marker', counts)
+        elif season_num is not None and season != season_num:
+            _report_problem(f.path,
+                f'episode marker season {season:02d} does not match its "Season {season_num:02d}" folder', counts)
+
+def _verify_folder(path, name, counts, is_root=False, online=False, parent_collection_id=None):
+    counts['folders'] += 1
+    counts['current_group'] = path
+
+    try:
+        children = list(os.scandir(path))
+    except OSError as e:
+        _report_problem(path, f'could not read folder: {e}', counts)
+        return
+
+    subdirs = [c for c in children if c.is_dir()]
+    media_files = [c for c in children if c.is_file() and _is_video_file(c.name)]
+
+    if is_root or _is_pass_through_folder(name):
+        for d in subdirs:
+            _verify_folder(d.path, d.name, counts, online=online)
+        return
+
+    if media_files and subdirs:
+        _report_problem(path, 'folder mixes video files and sub-folders', counts)
+        for d in subdirs:
+            _verify_folder(d.path, d.name, counts, online=online)
+        return
+
+    if subdirs and all(SEASON_LIKE_RE.match(d.name) for d in subdirs):
+        if _bracket_mismatch(name):
+            _report_problem(path, 'series folder name has mismatched parentheses or brackets', counts)
+        else:
+            match = SERIES_NAME_RE.match(name)
+            if not match:
+                _report_problem(path,
+                    'series folder name does not match "Title (Year) [tmdbid-N]" or "Title [tmdbid-N]"', counts)
+            elif online:
+                _verify_series_online(path, name, match, counts)
+        for d in subdirs:
+            _verify_season_folder(d, counts)
+        return
+
+    if media_files and not subdirs:
+        counts['files'] += len(media_files)
+        if _bracket_mismatch(name):
+            _report_problem(path, 'movie folder name has mismatched parentheses or brackets', counts)
+        else:
+            match = MOVIE_TMDB_NAME_RE.match(name)
+            if match:
+                if online:
+                    _verify_movie_online(path, name, match, parent_collection_id, counts)
+            elif not MOVIE_IMDB_NAME_RE.match(name):
+                _report_problem(path,
+                    'movie folder name does not match "Title (Year) [tmdbid-N]" or "Title (Year) [imdbid-ttN]"', counts)
+        return
+
+    if subdirs and not media_files:
+        if _bracket_mismatch(name):
+            _report_problem(path, 'collection folder name has mismatched parentheses or brackets', counts)
+            collection_id = PARENT_COLLECTION_UNKNOWN
+        else:
+            match = COLLECTION_NAME_RE.match(name)
+            if not match:
+                _report_problem(path, 'collection folder name does not match "Title [tmdbid-N]"', counts)
+                collection_id = PARENT_COLLECTION_UNKNOWN
+            else:
+                if online:
+                    _verify_collection_online(path, name, match, counts)
+                collection_id = match.group('id')
+        for d in subdirs:
+            _verify_folder(d.path, d.name, counts, online=online, parent_collection_id=collection_id)
+        return
+
+    _report_problem(path, 'folder has no recognized video files or sub-folders', counts)
+
+def verify_library(root, online=False):
+    # Lint pass over an already-organized (or hand-built) library: walks the tree and flags any
+    # folder/file that doesn't match this tool's own naming convention. Read-only - no renames or
+    # moves. With online=True, also re-checks every tagged movie/series/collection against TMDB.
+    if not os.path.isdir(root):
+        print("The specified folder does not exist.")
+        return
+
+    counts = {'folders': 0, 'files': 0, 'errors': 0, 'current_group': None, 'last_printed_group': None}
+    mode = "verify-library-online" if online else "verify-library"
+    print(f"=== {mode}: {root} ===\n")
+    _verify_folder(root, os.path.basename(os.path.normpath(root)), counts, is_root=True, online=online)
+    print()
+    print("=== summary ===")
+    print(f"folders checked: {counts['folders']}   files checked: {counts['files']}   errors: {counts['errors']}")
+    if counts['errors'] == 0:
+        print(f"{ANSI_GREEN}Everything looks good - no problems found.{ANSI_RESET}")
+
 def arguments():
     parser = argparse.ArgumentParser(
                     prog='Movie Release Renamer',
@@ -533,6 +781,8 @@ def arguments():
     parser.add_argument('-n', '--normalize', help='Pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing', action='store_true', default=False)
     parser.add_argument('-cs', '--check-syntax', help='Offline: report how each release parses, no TMDB, no moves', action='store_true', default=False)
     parser.add_argument('-cf', '--check-full', help='Report parsing + TMDB match + destination path, no moves', action='store_true', default=False)
+    parser.add_argument('-vl', '--verify-library', help='Offline: audit an already-organized library for naming/structure mistakes (no TMDB, no moves)', action='store_true', default=False)
+    parser.add_argument('-vlo', '--verify-library-online', help='Online: run --verify-library plus TMDB drift checks (mistyped/dead ids, collection membership changes), no moves', action='store_true', default=False)
 
     return parser.parse_args()
 
@@ -550,11 +800,25 @@ def main():
     DRY_RUN = args.dry_run
 
     # TMDB is needed for TV (always) and for movies unless --source srrdb.
-    # --check-syntax is fully offline, so it is the only mode that never needs a key.
-    if API_KEY == 'YOUR_TMDB_API_KEY' and not args.check_syntax:
+    # --check-syntax and --verify-library are fully offline, so they never need a key.
+    # --verify-library-online gets its own hard-stop check below instead of this soft warning.
+    if (API_KEY == 'YOUR_TMDB_API_KEY' and not args.check_syntax and not args.verify_library
+            and not args.verify_library_online):
         print("WARNING: TMDB_API_KEY is not set - TMDB lookups will fail.")
         print("         Set it with:  export TMDB_API_KEY=<your-key>")
         print()
+
+    if args.verify_library_online:
+        if API_KEY == 'YOUR_TMDB_API_KEY':
+            print("TMDB_API_KEY is not set - --verify-library-online requires a working TMDB API key.")
+            print("         Set it with:  export TMDB_API_KEY=<your-key>")
+            return
+        verify_library(folder, online=True)
+        return
+
+    if args.verify_library:
+        verify_library(folder)
+        return
 
     if args.normalize:
         normalize_input(folder, DRY_RUN)
