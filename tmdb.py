@@ -39,3 +39,27 @@ def tmdb_collection_search(tmdb_id):
         return data
     else:
         return None
+
+def _tmdb_get_by_id(url):
+    # Shared by the --verify-library-online lookups below: dict on 200, False on 404 (id
+    # confirmed gone), None for anything else (network error, timeout, bad key) so callers can
+    # tell "deleted" apart from "couldn't check".
+    try:
+        response = requests.get(url, timeout=10)
+    except requests.RequestException:
+        return None
+
+    if response.status_code == 200:
+        return response.json()
+    if response.status_code == 404:
+        return False
+    return None
+
+def tmdb_get_movie_by_id(movie_id):
+    return _tmdb_get_by_id(f'https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}')
+
+def tmdb_get_tv_by_id(tv_id):
+    return _tmdb_get_by_id(f'https://api.themoviedb.org/3/tv/{tv_id}?api_key={API_KEY}')
+
+def tmdb_get_collection_by_id(collection_id):
+    return _tmdb_get_by_id(f'https://api.themoviedb.org/3/collection/{collection_id}?api_key={API_KEY}')
