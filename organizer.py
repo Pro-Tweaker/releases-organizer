@@ -603,7 +603,7 @@ def _verify_movie_online(path, name, match, parent_collection_id, counts):
     elif parent_collection_id is None:
         if collection is not None:
             _report_problem(path,
-                f'movie now belongs to TMDB collection "{collection["name"]}" [tmdbid-{collection["id"]}] '
+                f'movie now belongs to TMDB collection "{collection["name"]} [tmdbid-{collection["id"]}]" '
                 'but is filed as a standalone movie', counts)
     elif collection is None:
         _report_problem(path,
