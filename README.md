@@ -93,8 +93,8 @@ options:
   -s, --source {tmdb,srrdb}
                         metadata source for movies (default: tmdb)
   -de, --delete-empty   delete source folders once empty after the move
-  -ds, --srr            download SRR file from srrDB
-  -dn, --nfo            download NFO file from srrDB
+  -ds, --srr            download SRR file from srrDB (movies)
+  -dn, --nfo            download NFO file from srrDB (movies)
   -d, --debug           enable debug output
   -dy, --dry-run        identify and print results without moving anything
   -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media)
