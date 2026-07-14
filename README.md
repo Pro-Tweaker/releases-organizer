@@ -105,7 +105,7 @@ options:
                         offline: audit an already-organized library for naming/structure
                         mistakes, no TMDB, no moves
   -vlo, --verify-library-online
-                        online: run --verify-library plus live TMDB drift checks (no moves)
+                        online: run --verify-library plus live TMDB drift checks, no moves
 ```
 
 Notes:
