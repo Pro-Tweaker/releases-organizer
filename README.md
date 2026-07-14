@@ -97,8 +97,8 @@ options:
   -dn, --nfo            download NFO file from srrDB (movies)
   -d, --debug           enable debug output
   -dy, --dry-run        identify and print results without moving anything
-  -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media)
-                        before organizing
+  -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder
+                        loose media) before organizing
   -cs, --check-syntax   offline: report how each release parses, no TMDB, no moves
   -cf, --check-full     online: report parsing + TMDB match + destination path, no moves
   -vl, --verify-library
