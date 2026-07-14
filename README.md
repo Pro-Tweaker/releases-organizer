@@ -219,3 +219,4 @@ Folder names follow the Jellyfin conventions:
 
 - Movies — https://jellyfin.org/docs/general/server/media/movies/
 - TV shows — https://jellyfin.org/docs/general/server/media/shows/
+- Metadata Provider Identifiers — https://jellyfin.org/docs/general/server/metadata/identifiers/
