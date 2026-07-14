@@ -1,7 +1,7 @@
 # Releases Organizer
 
 Sort scene/P2P movie and TV releases into a clean, [Jellyfin](https://jellyfin.org)-friendly
-library. The tool identifies each release against [TMDB](https://www.themoviedb.org/) (or
+library. The tool identifies each release against [The Movie Database (TMDB)](https://www.themoviedb.org/) (or
 [srrDB](https://www.srrdb.com/) for movies), then creates properly named folders and moves the
 media into them. **Your media files are never renamed** — only the surrounding folders are
 created.
@@ -80,7 +80,9 @@ PREFER_ORIGINAL_TITLE = [
 ## Usage
 
 ```
-usage: Movie Release Renamer [-h] [-s {tmdb,srrdb}] [-de] [-ds] [-dn] [-d] [-dy] [-n] [-cs] [-cf] [folder] [output]
+usage: Releases Organizer [-h] [-s {tmdb,srrdb}] [-de] [-ds] [-dn] [-d] [-dy] [-n] [-cs] [-cf]
+                          [-vl] [-vlo]
+                          [folder] [output]
 
 positional arguments:
   folder                source folder to scan (default: current directory)
@@ -91,16 +93,17 @@ options:
   -s, --source {tmdb,srrdb}
                         metadata source for movies (default: tmdb)
   -de, --delete-empty   delete source folders once empty after the move
-  -ds, --srr            download the .srr file from srrDB (movies)
-  -dn, --nfo            download the .nfo file from srrDB (movies)
+  -ds, --srr            download SRR file from srrDB
+  -dn, --nfo            download NFO file from srrDB
   -d, --debug           enable debug output
   -dy, --dry-run        identify and print results without moving anything
-  -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing
-  -cs, --check-syntax   offline: report how each release parses (no TMDB, no moves)
-  -cf, --check-full     report parsing + TMDB match + destination path (no moves)
+  -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media)
+                        before organizing
+  -cs, --check-syntax   offline: report how each release parses, no TMDB, no moves
+  -cf, --check-full     online: report parsing + TMDB match + destination path, no moves
   -vl, --verify-library
                         offline: audit an already-organized library for naming/structure
-                        mistakes (no TMDB, no moves)
+                        mistakes, no TMDB, no moves
   -vlo, --verify-library-online
                         online: run --verify-library plus live TMDB drift checks (no moves)
 ```

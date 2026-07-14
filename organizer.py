@@ -250,7 +250,7 @@ def extract_tmdb_collection_info(tmdb_collection_data):
     else:
         return None, None
 
-def rename_release_with_ssrdb(release_name, imdb_data):
+def rename_release_with_srrdb(release_name, imdb_data):
     # Extract movie name and release date from the IMDb data
     if 'releases' in imdb_data and imdb_data['releases']:
         movie_name = imdb_data['releases'][0]['title']
@@ -772,23 +772,23 @@ def print_tmdb_api_key_help():
 
 def arguments():
     parser = argparse.ArgumentParser(
-                    prog='Movie Release Renamer',
+                    prog='Releases Organizer',
                     description='',
                     epilog='')
 
-    parser.add_argument('folder', nargs='?', default='.')
-    parser.add_argument('output', nargs='?', default='output')
-    parser.add_argument('-s', '--source', choices=['tmdb', 'srrdb'], default='tmdb')
-    parser.add_argument('-de', '--delete-empty', help='Delete empty folders after move', action='store_true', default=False)
-    parser.add_argument('-ds', '--srr', help='Download SRR file from ssrDB', action='store_true', default=False)
-    parser.add_argument('-dn', '--nfo', help='Download NFO file from ssrDB', action='store_true', default=False)
-    parser.add_argument('-d', '--debug', help='Enable debug output', action='store_true', default=False)
-    parser.add_argument('-dy', '--dry-run', help='Do not make the moves', action='store_true', default=False)
-    parser.add_argument('-n', '--normalize', help='Pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing', action='store_true', default=False)
-    parser.add_argument('-cs', '--check-syntax', help='Offline: report how each release parses, no TMDB, no moves', action='store_true', default=False)
-    parser.add_argument('-cf', '--check-full', help='Report parsing + TMDB match + destination path, no moves', action='store_true', default=False)
-    parser.add_argument('-vl', '--verify-library', help='Offline: audit an already-organized library for naming/structure mistakes (no TMDB, no moves)', action='store_true', default=False)
-    parser.add_argument('-vlo', '--verify-library-online', help='Online: run --verify-library plus TMDB drift checks (mistyped/dead ids, collection membership changes), no moves', action='store_true', default=False)
+    parser.add_argument('folder', nargs='?', default='.', help='source folder to scan (default: current directory)')
+    parser.add_argument('output', nargs='?', default='output', help='destination library folder (default: output)')
+    parser.add_argument('-s', '--source', choices=['tmdb', 'srrdb'], default='tmdb', help='metadata source for movies (default: tmdb)')
+    parser.add_argument('-de', '--delete-empty', action='store_true', default=False, help='delete empty folders after move')
+    parser.add_argument('-ds', '--srr', action='store_true', default=False, help='download SRR file from srrDB')
+    parser.add_argument('-dn', '--nfo', action='store_true', default=False, help='download NFO file from srrDB')
+    parser.add_argument('-d', '--debug', action='store_true', default=False, help='enable debug output')
+    parser.add_argument('-dy', '--dry-run', action='store_true', default=False, help='identify and print results without moving anything')
+    parser.add_argument('-n', '--normalize', action='store_true', default=False, help='pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing')
+    parser.add_argument('-cs', '--check-syntax', action='store_true', default=False, help='offline: report how each release parses, no TMDB, no moves')
+    parser.add_argument('-cf', '--check-full', action='store_true', default=False, help='online: report parsing + TMDB match + destination path, no moves')
+    parser.add_argument('-vl', '--verify-library', action='store_true', default=False, help='offline: audit an already-organized library for naming/structure mistakes, no TMDB, no moves')
+    parser.add_argument('-vlo', '--verify-library-online', action='store_true', default=False, help='online: run --verify-library plus TMDB drift checks (mistyped/dead ids, collection membership changes), no moves')
 
     return parser.parse_args()
 
@@ -935,7 +935,7 @@ def main():
 
         if source == "srrdb":
             result = srrdb(release_name)
-            renamed_release = rename_release_with_ssrdb(release_name, result)
+            renamed_release = rename_release_with_srrdb(release_name, result)
         elif source == "tmdb":
             tmdb_data = tmdb_search(movie_name, release_date)
             tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
