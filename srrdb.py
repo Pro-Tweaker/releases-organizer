@@ -15,7 +15,7 @@ def make_request(endpoint, release_name):
         response.raise_for_status()  # Raise an exception for HTTP errors
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Failed to retrieve from ssrDB: {e}")
+        print(f"Failed to retrieve from srrDB: {e}")
         return None
 
 def srrdb_search(release_name):
@@ -38,13 +38,13 @@ def download_file(url, destination_path):
         response = requests.get(url)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
-        print(f"Failed to download from ssrDB: {e}")
+        print(f"Failed to download from srrDB: {e}")
         return False
 
     # srrDB answers missing files with an HTML page instead of an HTTP error
     content_type = response.headers.get('Content-Type', '')
     if 'text/html' in content_type or not response.content:
-        print(f"File not available on ssrDB: {url}")
+        print(f"File not available on srrDB: {url}")
         return False
 
     with open(destination_path, 'wb') as file:
@@ -59,7 +59,7 @@ def srrdb_download_srr(release_name, destination_folder):
 def srrdb_download_nfo(release_name, destination_folder):
     nfo_result = srrdb_nfo(release_name)
     if not nfo_result or not nfo_result.get('nfolink'):
-        print(f"No NFO found on ssrDB for {release_name}")
+        print(f"No NFO found on srrDB for {release_name}")
         return False
 
     downloaded = False
