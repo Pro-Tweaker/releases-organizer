@@ -157,9 +157,13 @@ def strip_aka(name):
 def extract_movie_info(release_name):
     normalized = normalize_aka(release_name)
 
-    # Regular expression pattern to match movie names and release dates
-    #pattern = r'(.+?)\.(\d{4})\.' # only dot
-    pattern = r'(.+?)[.\s](\d{4})[.\s]' # dot or space
+    # Regular expression pattern to match movie names and release dates.
+    # Greedy title match: some movie titles carry their own year-like number
+    # (e.g. "Blade.Runner.2049", "Wonder.Woman.1984"). A non-greedy title would
+    # stop at that embedded number instead of the real release year that follows
+    # it, so match as much title as possible and let the year be the *last*
+    # delimited 4-digit token in the string, which is always the true release year.
+    pattern = r'(.+)[.\s](\d{4})[.\s]' # dot or space
 
     match = re.search(pattern, normalized)
 
@@ -258,9 +262,8 @@ def rename_release_with_srrdb(release_name, imdb_data):
     else:
         return release_name  # If IMDb data is not available, keep the original name
 
-    # Extract the year (date) from the release name if available
-    date_match = re.search(r'\d{4}', release_name)
-    release_date = date_match.group() if date_match else "YearUnknown"
+    # Reuse extract_movie_info's year parsing rather than a separate ad hoc regex
+    _, release_date = extract_movie_info(release_name)
 
     # Generate the new release name format
     new_release_name = f"{movie_name} ({release_date}) [imdbid-tt{imdb_id}]"
