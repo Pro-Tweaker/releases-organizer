@@ -192,10 +192,14 @@ def srrdb(release_name):
 
             for index, result in enumerate(search_result['results'], start=1):
                 print(f"{index}. {result['release']}")
+            print("0. None of these - skip this release")
 
             while True:
                 try:
                     user_choice = int(input("Enter the number of the result to use: "))
+                    if user_choice == 0:
+                        print(f"Skipped: no matching result chosen for {release_name}")
+                        return None
                     if 1 <= user_choice <= results_count:
                         selected_result = search_result['results'][user_choice - 1]
                         print(f"You selected: {selected_result['release']}")
@@ -224,10 +228,14 @@ def extract_tmdb_info(release_name, tmdb_data):
 
             for i, movie in enumerate(tmdb_data['results']):
                 print(f"{i + 1}. {movie['title']} ({movie['release_date']}) - https://www.themoviedb.org/movie/{movie['id']}")
+            print("0. None of these - skip this release")
 
             while True:
                 try:
                     choice = int(input("Enter the number of the entry you want: "))
+                    if choice == 0:
+                        print(f"Skipped: no matching result chosen for {release_name}")
+                        return None, None, None, None
                     if 1 <= choice <= tmdb_data['total_results']:
                         first_movie = tmdb_data['results'][choice - 1]
                         break
@@ -332,10 +340,14 @@ def extract_tmdb_tv_info(release_name, tv_data):
 
             for i, show in enumerate(tv_data['results']):
                 print(f"{i + 1}. {show['name']} ({show.get('first_air_date', 'N/A')}) - https://www.themoviedb.org/tv/{show['id']}")
+            print("0. None of these - skip this release")
 
             while True:
                 try:
                     choice = int(input("Enter the number of the result to use: "))
+                    if choice == 0:
+                        print(f"Skipped: no matching result chosen for {release_name}")
+                        return None, None, None, None
                     if 1 <= choice <= len(tv_data['results']):
                         first_show = tv_data['results'][choice - 1]
                         break
@@ -887,6 +899,12 @@ def main():
                 print(f"Series Name: {series_name}")
                 print(f"Series Year: {series_year}")
 
+            if series_name == "Unknown Series":
+                print(f"Could not parse a series name from '{release_name}' - skipping. "
+                      "Run --check-syntax to preview parsing.")
+                print("")
+                continue
+
             tv_data = tmdb_tv_search(series_name, series_year)
             tv_id, tv_title, tv_first_air_date, tv_language = extract_tmdb_tv_info(release_name, tv_data)
 
@@ -946,11 +964,21 @@ def main():
             print("")
             continue
         
+        if movie_name == "Unknown Movie" or release_date == "YearUnknown":
+            print(f"Could not parse a title/year from '{release_name}' - skipping. "
+                  "Run --check-syntax to preview parsing.")
+            print("")
+            continue
+
         renamed_collection = None
         tmdb_language = "en"
 
         if source == "srrdb":
             result = srrdb(release_name)
+            if result is None:
+                print(f"No srrDB match for {release_name}")
+                print("")
+                continue
             renamed_release = rename_release_with_srrdb(release_name, result)
         elif source == "tmdb":
             tmdb_data = tmdb_search(movie_name, release_date)
@@ -972,6 +1000,8 @@ def main():
                 renamed_release = rename_release_with_tmdb(tmdb_id, tmdb_title, tmdb_release_date)
                 renamed_collection = rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name)
             else:
+                print(f"No TMDb movie match for {release_name}")
+                print("")
                 continue
 
         print(f"Renamed Release: {renamed_release}")
