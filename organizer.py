@@ -838,9 +838,18 @@ def main():
     # --verify-library-online gets its own hard-stop check below instead of this soft warning.
     if (API_KEY == 'YOUR_TMDB_API_KEY' and not args.check_syntax and not args.verify_library
             and not args.verify_library_online):
-        print("WARNING: TMDB_API_KEY is not set - TMDB lookups will fail.")
-        print_tmdb_api_key_help()
-        print()
+        if source == 'srrdb':
+            # Movies won't hit TMDB in this mode; only TV releases or collection lookups
+            # would still fail, so a warning is enough - no need to hard-stop.
+            print("WARNING: TMDB_API_KEY is not set - TMDB lookups will fail.")
+            print_tmdb_api_key_help()
+            print()
+        else:
+            # source == 'tmdb': every release needs a working key, so fail fast instead of
+            # printing "No TMDb movie match" once per release across the whole library.
+            print("TMDB_API_KEY is not set - this command requires a working TMDB API key.")
+            print_tmdb_api_key_help()
+            return
 
     if args.verify_library_online:
         if API_KEY == 'YOUR_TMDB_API_KEY':
