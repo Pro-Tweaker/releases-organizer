@@ -163,7 +163,9 @@ def extract_movie_info(release_name):
     # stop at that embedded number instead of the real release year that follows
     # it, so match as much title as possible and let the year be the *last*
     # delimited 4-digit token in the string, which is always the true release year.
-    pattern = r'(.+)[.\s](\d{4})[.\s]' # dot or space
+    # The year itself may be wrapped in parentheses (e.g. "Hamnet (2025) (2160p...")
+    # instead of plain scene-style dots, so the parens are optional either way.
+    pattern = r'(.+)[.\s]\(?(\d{4})\)?[.\s]' # dot or space, year optionally in parens
 
     match = re.search(pattern, normalized)
 
@@ -305,9 +307,10 @@ def extract_tv_info(release_name):
     raw_name = strip_aka(match.group(1))
     season = int(match.group(2))
 
-    # Pull a trailing year token out of the series name if present (e.g. "Series.Name.2019")
+    # Pull a trailing year token out of the series name if present (e.g. "Series.Name.2019"
+    # or "Series Name (2019)" - the parens some libraries use around the year are optional)
     year = None
-    year_match = re.search(r'^(.*?)[.\s](19\d{2}|20\d{2})$', raw_name)
+    year_match = re.search(r'^(.*?)[.\s]\(?(19\d{2}|20\d{2})\)?$', raw_name)
     if year_match:
         raw_name = year_match.group(1)
         year = year_match.group(2)
@@ -365,6 +368,9 @@ def season_from_filename(filename):
     match = re.search(r'S(\d{1,2})E\d{1,2}', filename, re.IGNORECASE)
     if not match:
         match = re.search(r'[.\s_-]S(\d{1,2})[.\s_-]', filename, re.IGNORECASE)
+    if not match:
+        # "1x01" style episode numbering (e.g. "1x01 A Guy Walks Into a Bar.mkv")
+        match = re.search(r'(?<!\d)(\d{1,2})x\d{2,3}(?!\d)', filename, re.IGNORECASE)
     if match:
         return int(match.group(1))
     return None
