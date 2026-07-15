@@ -189,6 +189,39 @@ Use srrDB (IMDb ids) and grab the .nfo for each movie:
 python organizer.py ~/Downloads ~/Media --source srrdb --nfo
 ```
 
+## Input structure
+
+The tool scans a source folder for scene/P2P style releases — a mix of self-contained release
+folders and loose media files is fine, in any combination:
+
+```
+downloads/
+├── Sicario.2015.1080p.BluRay.x264-SPARKS/
+│   ├── Sicario.2015.1080p.BluRay.x264-SPARKS.mkv
+│   ├── Sicario.2015.1080p.BluRay.x264-SPARKS.nfo
+│   └── Sample/
+│       └── Sicario.2015.1080p.BluRay.x264-SPARKS.sample.mkv
+├── Amelie.2001.1080p.BluRay.x264-GROUP.mkv
+├── Amelie.2001.1080p.BluRay.x264-GROUP.FR.srt
+├── The.Mandalorian.2019.S02E05.2160p.WEB.H265-GROUP.mkv
+└── Lupin.2021.S01.1080p.WEB-GROUP/
+    ├── Lupin.2021.S01E01.1080p.WEB-GROUP.mkv
+    ├── Lupin.2021.S01E02.1080p.WEB-GROUP.mkv
+    └── Proof/
+        └── proof.jpg
+```
+
+- **Release folders** (`Sicario.2015…SPARKS/`, `Lupin.2021.S01…GROUP/`) are matched against TMDB
+  (or srrDB) by the folder name; **everything valid inside is moved**, `.nfo`/other extras are left
+  behind, and `Sample`/`Proof`/screenshot folders are skipped entirely.
+- **Loose files** (`Amelie.2001…GROUP.mkv`, `The.Mandalorian.2019.S02E05…mkv`) are matched by
+  their own file name and **moved** individually. A loose subtitle sharing the same base name
+  (`Amelie.2001…GROUP.FR.srt`) is picked up automatically and copied alongside its video.
+  Season-pack folders can nest each episode in its own sub-folder — the tool scans recursively
+  and flattens the result.
+- Messy, human-renamed folders (spaces, `1x01` episode numbering, loose files not yet in their
+  own folder) can be cleaned up first with `--normalize` — see [Usage](#usage).
+
 ## Output structure
 
 ```
