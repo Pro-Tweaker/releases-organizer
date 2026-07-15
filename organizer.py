@@ -5,6 +5,7 @@ import argparse
 import os
 import re
 import shutil
+import sys
 
 from datetime import datetime
 
@@ -802,6 +803,12 @@ def arguments():
     return parser.parse_args()
 
 def main():
+    # Force UTF-8 output regardless of the console/redirect encoding - Windows defaults
+    # stdout to the system code page (e.g. cp1252) when it's not a real console (piped or
+    # redirected with `>`), which can't represent every character release/folder names carry.
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
     args = arguments()
 
     folder = args.folder
