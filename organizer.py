@@ -577,6 +577,41 @@ def _is_pass_through_folder(name):
 def _is_video_file(filename):
     return filename.lower().endswith(tuple(VALID_EXTENSIONS)) and 'sample' not in filename.lower()
 
+_ORGANIZED_SCAN_MAX_DEPTH = 4
+
+def _has_organized_marker(name):
+    # Any of this tool's own output name shapes - never produced by raw scene releases.
+    # Deliberately excludes SEASON_NAME_RE ("Season NN"): that shape carries no
+    # [tmdbid-.../imdbid-...] tag and could plausibly appear in a raw, not-yet-organized
+    # folder too, so on its own it's too weak a signal to refuse a run over.
+    return bool(MOVIE_TMDB_NAME_RE.match(name) or MOVIE_IMDB_NAME_RE.match(name)
+                or SERIES_NAME_RE.match(name) or COLLECTION_NAME_RE.match(name))
+
+def _scan_for_organized_marker(path, name, depth):
+    if _has_organized_marker(name):
+        return True
+    if depth > _ORGANIZED_SCAN_MAX_DEPTH:
+        return False
+    # depth 0: always descend into whatever the user pointed at.
+    # deeper: only follow this tool's own pass-through containers (movies/tv/lang
+    # code) - a raw scene dump won't have these, so detection stays cheap and
+    # short-circuits on the first hit.
+    if depth == 0 or _is_pass_through_folder(name):
+        try:
+            children = list(os.scandir(path))
+        except OSError:
+            return False
+        return any(_scan_for_organized_marker(c.path, c.name, depth + 1)
+                   for c in children if c.is_dir())
+    return False
+
+def detect_organized_library(folder):
+    # Safety check for the destructive organize/normalize steps: is `folder` itself,
+    # or something inside it, already named after this tool's own output convention?
+    # Never trust the path string the caller passed in (folder names mean nothing -
+    # only what's actually inside the folder does).
+    return _scan_for_organized_marker(folder, os.path.basename(os.path.normpath(folder)), 0)
+
 def _bracket_mismatch(name):
     # Catches typos like a missing closing paren/bracket (e.g. "Show (2018 [tmdbid-1]") that
     # would otherwise slip through the naming regexes, since '(' and '[' are also valid
@@ -811,6 +846,7 @@ def arguments():
     parser.add_argument('-cf', '--check-full', action='store_true', default=False, help='online: report parsing + TMDB match + destination path, no moves')
     parser.add_argument('-vl', '--verify-library', action='store_true', default=False, help='offline: audit an already-organized library for naming/structure mistakes, no TMDB, no moves')
     parser.add_argument('-vlo', '--verify-library-online', action='store_true', default=False, help='online: run --verify-library plus TMDB drift checks (mistyped/dead ids, collection membership changes), no moves')
+    parser.add_argument('--force-reorganize-existing-library', action='store_true', default=False, help='override the organized-library safety check and run the destructive organize/normalize step anyway (dangerous)')
 
     return parser.parse_args()
 
@@ -861,6 +897,25 @@ def main():
 
     if args.verify_library:
         verify_library(folder)
+        return
+
+    destructive = not (args.check_syntax or args.check_full or args.dry_run
+                       or args.force_reorganize_existing_library)
+    if destructive and detect_organized_library(folder):
+        print(f"{ANSI_RED}REFUSING TO RUN{ANSI_RESET}: '{folder}' already contains an organized library")
+        print("(found a folder named after this tool's own convention, e.g. \"Title (Year) [tmdbid-N]\").")
+        print()
+        print("Running the organize step here would re-parse already-tagged releases as raw scene")
+        print("dumps and rename/move them again - which can corrupt an already-built library.")
+        print()
+        print("Safe commands against an existing library:")
+        print("  -cs / --check-syntax            offline parse preview, no TMDB, no moves")
+        print("  -cf / --check-full              online TMDB preview, no moves")
+        print("  -vl / --verify-library          offline structure/naming audit, no moves")
+        print("  -vlo / --verify-library-online  online audit + TMDB drift check, no moves")
+        print("  -dy / --dry-run                 preview only, no moves")
+        print()
+        print("To force the organize step to run here anyway, pass --force-reorganize-existing-library.")
         return
 
     if args.normalize:

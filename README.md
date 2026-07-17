@@ -81,7 +81,7 @@ PREFER_ORIGINAL_TITLE = [
 
 ```
 usage: Releases Organizer [-h] [-s {tmdb,srrdb}] [-de] [-ds] [-dn] [-d] [-dy] [-n] [-cs] [-cf]
-                          [-vl] [-vlo]
+                          [-vl] [-vlo] [--force-reorganize-existing-library]
                           [folder] [output]
 
 positional arguments:
@@ -106,6 +106,9 @@ options:
                         mistakes, no TMDB, no moves
   -vlo, --verify-library-online
                         online: run --verify-library plus live TMDB drift checks, no moves
+  --force-reorganize-existing-library
+                        override the organized-library safety check and run the destructive
+                        organize/normalize step anyway (dangerous)
 ```
 
 Notes:
@@ -129,6 +132,15 @@ Notes:
   longer matching the collection folder it's filed under). It requires `TMDB_API_KEY` and still
   never touches the filesystem. `[imdbid-tt…]` (srrDB) movie folders are skipped, since they were
   never matched against TMDB in the first place.
+- **Organized-library safeguard** — the default organize step and `--normalize` refuse to run if
+  the source folder itself, or anything inside it, is already named after this tool's own output
+  convention (`Title (Year) [tmdbid-…]`, `Title (Year) [imdbid-tt…]`, or `Collection [tmdbid-…]`).
+  This is a content check, not a path/name guess — it exists so a mistake (forgetting
+  `--check-syntax`, hitting Enter too early, pointing at the wrong folder) can't silently
+  re-process and corrupt an already-built library. `--check-syntax`, `--check-full`,
+  `--verify-library`, `--verify-library-online`, and `--dry-run` are always allowed, since none of
+  them touch the filesystem. To intentionally re-run the organize step over an existing library
+  anyway, pass `--force-reorganize-existing-library`.
 
 ## Examples
 
