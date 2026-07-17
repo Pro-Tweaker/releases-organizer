@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sys
+import time
 
 from datetime import datetime
 
@@ -48,7 +49,7 @@ VALID_EXTENSIONS_TO_COPY = [
 
 PREFER_ORIGINAL_TITLE = [
     'fr',
-    'es'
+    #'es'
 ]
 
 # A release is treated as TV when its name carries a season pack or episode marker
@@ -559,7 +560,45 @@ def run_report(releases, output, source, full=False):
     if full:
         print(f"resolved: {counts['resolved']}   failed: {counts['failed']}")
 
+def _count_subfolders(root):
+    # Fast, local-only pre-pass so the online walk can show progress against a total. Approximate:
+    # doesn't replicate every early-return quirk in _verify_folder/_verify_season_folder (e.g. a
+    # season folder's own unexpected sub-folders aren't descended into by the real walk), but that
+    # only matters for already-broken libraries and this is just a progress estimate.
+    total = 1  # root itself, which _verify_folder(is_root=True) also counts
+    for _, dirs, _ in os.walk(root):
+        total += len(dirs)
+    return total
+
+def _tick_progress(counts):
+    if not counts.get('progress_enabled') or counts.get('total') is None:
+        return
+    now = time.monotonic()
+    done = counts['folders']
+    total = counts['total']
+    if done < total and now - counts['last_progress_time'] < 0.1:
+        return # throttle redraws so huge libraries don't spam the terminal
+    counts['last_progress_time'] = now
+    if counts.get('blank_before_next_progress'):
+        sys.stdout.write('\n')
+        counts['blank_before_next_progress'] = False
+    pct = min(done * 100 // total, 100)
+    elapsed = int(now - counts['start_time'])
+    line = (f"  checked {done}/{total} folders (~{pct}%), "
+            f"{counts['errors']} problem(s) so far, {elapsed // 60}:{elapsed % 60:02d} elapsed")
+    pad = max(0, counts.get('last_progress_len', 0) - len(line))
+    sys.stdout.write('\r' + line + ' ' * pad)
+    sys.stdout.flush()
+    counts['last_progress_len'] = len(line)
+
+def _clear_progress_line(counts):
+    if counts.get('last_progress_len'):
+        sys.stdout.write('\r' + ' ' * counts['last_progress_len'] + '\r')
+        sys.stdout.flush()
+        counts['last_progress_len'] = 0
+
 def _report_problem(path, message, counts):
+    _clear_progress_line(counts)
     counts['errors'] += 1
     # Blank line whenever we move from one folder's group of problems to another's, so a run
     # against a large library reads as separate blocks per offending folder instead of a wall of text
@@ -568,6 +607,7 @@ def _report_problem(path, message, counts):
         print()
     counts['last_printed_group'] = group
     print(f"{ANSI_RED}ERROR{ANSI_RESET}: {path}\n       {message}")
+    counts['blank_before_next_progress'] = True
 
 def _is_pass_through_folder(name):
     # movies/, tv/, and a bare language code (en, fr, pt-BR, ...) are containers this tool
@@ -700,6 +740,7 @@ def _verify_collection_online(path, name, match, counts):
 
 def _verify_season_folder(entry, counts):
     counts['folders'] += 1
+    _tick_progress(counts)
     counts['current_group'] = entry.path
     if not SEASON_NAME_RE.match(entry.name):
         _report_problem(entry.path,
@@ -734,6 +775,7 @@ def _verify_season_folder(entry, counts):
 
 def _verify_folder(path, name, counts, is_root=False, online=False, parent_collection_id=None):
     counts['folders'] += 1
+    _tick_progress(counts)
     counts['current_group'] = path
 
     try:
@@ -811,10 +853,17 @@ def verify_library(root, online=False):
         print("The specified folder does not exist.")
         return
 
-    counts = {'folders': 0, 'files': 0, 'errors': 0, 'current_group': None, 'last_printed_group': None}
+    counts = {'folders': 0, 'files': 0, 'errors': 0, 'current_group': None, 'last_printed_group': None,
+              'total': None, 'progress_enabled': False, 'last_progress_len': 0,
+              'last_progress_time': 0.0, 'start_time': time.monotonic()}
     mode = "verify-library-online" if online else "verify-library"
     print(f"=== {mode}: {root} ===\n")
+    if online:
+        counts['progress_enabled'] = sys.stdout.isatty()
+        counts['total'] = _count_subfolders(root)
+        counts['start_time'] = time.monotonic()
     _verify_folder(root, os.path.basename(os.path.normpath(root)), counts, is_root=True, online=online)
+    _clear_progress_line(counts)
     print()
     print("=== summary ===")
     print(f"folders checked: {counts['folders']}   files checked: {counts['files']}   errors: {counts['errors']}")
