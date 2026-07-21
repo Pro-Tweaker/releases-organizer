@@ -393,11 +393,25 @@ def season_folder(season_number):
     return f"Season {int(season_number):02d}"
 
 def sanitize_for_windows(input_string):
+    # French typography spaces both sides of ":" ("Titre : Sous-titre"), and "/" is
+    # sometimes used the same way between alternate/co-titles ("King's Game / Kingmaker
+    # Collection"). Treat either spaced form as a separator and normalize it to this
+    # tool's existing " - " convention (already used for collection suffixes like
+    # "OSS 117 - Saga"). An unspaced colon or slash (English "Title: Subtitle",
+    # "Face/Off") falls through to the blanket strip below unchanged - it already
+    # collapses to a single space correctly.
+    sanitized_string = re.sub(r' [:/] ', ' - ', input_string)
+
     # Define a regex pattern to match characters not allowed in Windows filenames
     invalid_chars_regex = r'[\/:*?"<>|]'
 
     # Replace invalid characters with nothing
-    sanitized_string = re.sub(invalid_chars_regex, '', input_string)
+    sanitized_string = re.sub(invalid_chars_regex, '', sanitized_string)
+
+    # Deleting a punctuation character can leave an orphaned run of spaces behind -
+    # e.g. French titles conventionally space ":"/"?" ("Titre : Sous-titre"), so
+    # removing just the punctuation leaves a double space.
+    sanitized_string = re.sub(r' {2,}', ' ', sanitized_string).strip()
 
     # Remove trailing periods and spaces (Windows does not allow these at the end of folder names)
     sanitized_string = sanitized_string.rstrip(' .')
