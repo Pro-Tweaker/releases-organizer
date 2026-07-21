@@ -18,29 +18,35 @@ DEBUG = False
 DRY_RUN = False
 
 VALID_EXTENSIONS = [
-    'avi',
-    'iso',
-    'm2ts',
-    'mk3d',
-    'mkv',
-    'mov',
-    'mp4',
-    'mpeg',
-    'mpg',
-    'ts'
+    'avi',   # Audio Video Interleave
+    'iso',   # Optical disc image (BD/DVD)
+    'm2ts',  # Blu-ray BDAV MPEG-2 Transport Stream
+    'm4v',   # MPEG-4 video (Apple)
+    'mk3d',  # Matroska 3D
+    'mkv',   # Matroska Video
+    'mov',   # QuickTime Movie
+    'mp4',   # MPEG-4 Part 14
+    'mpeg',  # MPEG program stream
+    'mpg',   # MPEG program stream
+    'ogg',   # Ogg container
+    'ts',    # MPEG transport stream
+    'webm',  # WebM (VP8/VP9)
 ]
 
 VALID_EXTENSIONS_TO_MOVE = [
-    'avi',
-    'iso',
-    'm2ts',
-    'mk3d',
-    'mkv',
-    'mov',
-    'mp4',
-    'mpeg',
-    'mpg',
-    'ts'
+    'avi',   # Audio Video Interleave
+    'iso',   # Optical disc image (BD/DVD)
+    'm2ts',  # Blu-ray BDAV MPEG-2 Transport Stream
+    'm4v',   # MPEG-4 video (Apple)
+    'mk3d',  # Matroska 3D
+    'mkv',   # Matroska Video
+    'mov',   # QuickTime Movie
+    'mp4',   # MPEG-4 Part 14
+    'mpeg',  # MPEG program stream
+    'mpg',   # MPEG program stream
+    'ogg',   # Ogg container
+    'ts',    # MPEG transport stream
+    'webm',  # WebM (VP8/VP9)
 ]
 
 VALID_EXTENSIONS_TO_COPY = [
