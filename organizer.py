@@ -707,8 +707,8 @@ def _verify_movie_online(path, name, match, parent_collection_id, counts):
             'movie no longer belongs to any TMDB collection, but is filed under a collection folder', counts)
     elif str(collection['id']) != str(parent_collection_id):
         _report_problem(path,
-            f'movie belongs to TMDB collection [tmdbid-{collection["id"]}] but is filed under '
-            f'collection [tmdbid-{parent_collection_id}]', counts)
+            f'movie belongs to TMDB collection "{collection["name"]} [tmdbid-{collection["id"]}]" '
+            f'but is filed under collection [tmdbid-{parent_collection_id}]', counts)
 
 def _verify_series_online(path, name, match, counts):
     data = tmdb_get_tv_by_id(match.group('id'))
