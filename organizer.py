@@ -44,7 +44,13 @@ VALID_EXTENSIONS_TO_MOVE = [
 ]
 
 VALID_EXTENSIONS_TO_COPY = [
-    'srt',
+    'srt',   # SubRip Text
+    'vtt',   # WebVTT
+    'ass',   # ASS
+    'ssa',   # SSA
+    'sub',   # VobSub (paired with .idx)
+    'idx',   # VobSub index
+    'sup',   # PGS
 ]
 
 PREFER_ORIGINAL_TITLE = [
@@ -59,6 +65,7 @@ TV_PATTERN = r'[.\s]S\d{2}(?:E\d{2})?[.\s]' # dot or space, season pack or episo
 # already-organized (or hand-built) library instead of parsing raw scene release names.
 SEASON_NAME_RE = re.compile(r'^Season \d{2}$')
 SEASON_LIKE_RE = re.compile(r'(?i)^season')
+SUBS_DIR_RE = re.compile(r'(?i)^(subs?|subtitles)$')
 COLLECTION_NAME_RE = re.compile(r'^(?P<title>.+) \[tmdbid-(?P<id>\d+)\]$')
 MOVIE_TMDB_NAME_RE = re.compile(r'^(?P<title>.+) \((?P<year>\d{4})\) \[tmdbid-(?P<id>\d+)\]$')
 MOVIE_IMDB_NAME_RE = re.compile(r'^.+ \((?:\d{4}|YearUnknown)\) \[imdbid-tt\d+\]$')
@@ -803,8 +810,14 @@ def _verify_season_folder(entry, counts):
     subdirs = [c for c in children if c.is_dir()]
     media_files = [c for c in children if c.is_file() and _is_video_file(c.name)]
 
-    if subdirs:
-        _report_problem(entry.path, 'unexpected sub-folder inside a season folder', counts)
+    # A "Subs" (or "Sub"/"Subtitles") folder holding matching subtitle files is a standard way
+    # to ship subtitles alongside a season pack - accept at most one such folder instead of
+    # rejecting it outright; any other sub-folder is still unexpected.
+    subs_dir = next((d for d in subdirs if SUBS_DIR_RE.match(d.name)), None)
+    for d in subdirs:
+        if d is not subs_dir:
+            _report_problem(d.path, 'unexpected sub-folder inside a season folder', counts)
+
     if not media_files:
         _report_problem(entry.path, 'season folder contains no video files', counts)
         return
@@ -820,6 +833,29 @@ def _verify_season_folder(entry, counts):
         elif season_num is not None and season != season_num:
             _report_problem(f.path,
                 f'episode marker season {season:02d} does not match its "Season {season_num:02d}" folder', counts)
+
+    if subs_dir is not None:
+        _verify_subs_folder(subs_dir, season_num, counts)
+
+def _verify_subs_folder(entry, season_num, counts):
+    counts['folders'] += 1
+    _tick_progress(counts)
+    try:
+        children = list(os.scandir(entry.path))
+    except OSError as e:
+        _report_problem(entry.path, f'could not read folder: {e}', counts)
+        return
+
+    for c in children:
+        if c.is_dir():
+            _report_problem(c.path, 'unexpected sub-folder inside a Subs folder', counts)
+        elif not c.name.lower().endswith(tuple(VALID_EXTENSIONS_TO_COPY)):
+            _report_problem(c.path, 'unexpected non-subtitle file inside a Subs folder', counts)
+        elif season_num is not None:
+            season = season_from_filename(c.name)
+            if season is not None and season != season_num:
+                _report_problem(c.path,
+                    f'subtitle marker season {season:02d} does not match its "Season {season_num:02d}" folder', counts)
 
 def _verify_folder(path, name, counts, is_root=False, online=False, parent_collection_id=None):
     counts['folders'] += 1
