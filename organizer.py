@@ -393,6 +393,16 @@ def season_folder(season_number):
     return f"Season {int(season_number):02d}"
 
 def sanitize_for_windows(input_string):
+    # French typography uses non-breaking/narrow-no-break spaces (U+00A0, U+202F, etc.)
+    # around punctuation like "!", "?", ":" ("Au poste !", "Titre : Sous-titre").
+    # These render identically to a plain space in a terminal or file explorer, but are a
+    # different character - left alone, they'd make a freshly-computed name compare unequal
+    # to an on-disk name that happens to use a regular space (or vice versa), causing
+    # confusing "does not match" reports where the two printed strings look the same.
+    # Collapse every Unicode whitespace character to a plain ASCII space up front so the
+    # rest of this function - and any later comparisons - only ever deal with those.
+    sanitized_string = re.sub(r'\s', ' ', input_string)
+
     # French typography spaces both sides of ":" ("Titre : Sous-titre"), and "/" is
     # sometimes used the same way between alternate/co-titles ("King's Game / Kingmaker
     # Collection"). Treat either spaced form as a separator and normalize it to this
@@ -400,7 +410,7 @@ def sanitize_for_windows(input_string):
     # "OSS 117 - Saga"). An unspaced colon or slash (English "Title: Subtitle",
     # "Face/Off") falls through to the blanket strip below unchanged - it already
     # collapses to a single space correctly.
-    sanitized_string = re.sub(r' [:/] ', ' - ', input_string)
+    sanitized_string = re.sub(r' [:/] ', ' - ', sanitized_string)
 
     # Define a regex pattern to match characters not allowed in Windows filenames
     invalid_chars_regex = r'[\/:*?"<>|]'
