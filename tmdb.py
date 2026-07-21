@@ -61,8 +61,10 @@ def tmdb_tv_search(series_name, first_air_year=None):
     else:
         return None
 
-def tmdb_collection_search(tmdb_id):
+def tmdb_collection_search(tmdb_id, language=None):
     url = f'https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={API_KEY}'
+    if language:
+        url += f'&language={language}'
     response = requests.get(url)
 
     if response.status_code == 200:
@@ -92,5 +94,8 @@ def tmdb_get_movie_by_id(movie_id):
 def tmdb_get_tv_by_id(tv_id):
     return _tmdb_get_by_id(f'https://api.themoviedb.org/3/tv/{tv_id}?api_key={API_KEY}')
 
-def tmdb_get_collection_by_id(collection_id):
-    return _tmdb_get_by_id(f'https://api.themoviedb.org/3/collection/{collection_id}?api_key={API_KEY}')
+def tmdb_get_collection_by_id(collection_id, language=None):
+    url = f'https://api.themoviedb.org/3/collection/{collection_id}?api_key={API_KEY}'
+    if language:
+        url += f'&language={language}'
+    return _tmdb_get_by_id(url)

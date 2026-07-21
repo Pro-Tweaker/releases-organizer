@@ -501,7 +501,8 @@ def resolve_release(info, output, source):
         renamed = rename_release_with_tmdb(tid, title, rdate)
         if not renamed:
             return "BAD RELEASE DATE", None
-        cid, cname = extract_tmdb_collection_info(tmdb_collection_search(tid))
+        cid, cname = extract_tmdb_collection_info(
+            tmdb_collection_search(tid, language=lang if lang in PREFER_ORIGINAL_TITLE else None))
         renamed_coll = rename_collection_with_tmdb(cid, cname)
         return "OK", movie_destination(output, lang, renamed_coll, renamed)
 
@@ -668,6 +669,17 @@ def _pick_series_title(data):
         return data.get('original_name')
     return data.get('name')
 
+def _localized_collection_name(collection, movie_lang):
+    # Unlike movies/shows, a TMDB collection has no original_name/original_language
+    # field of its own - the only way to get it in the movie's preferred language is
+    # to explicitly re-request the collection in that language.
+    if movie_lang not in PREFER_ORIGINAL_TITLE:
+        return collection['name']
+    localized = tmdb_get_collection_by_id(collection['id'], language=movie_lang)
+    if isinstance(localized, dict) and localized.get('name'):
+        return localized['name']
+    return collection['name']
+
 def _report_name_mismatch(path, local_name, expected_name, counts):
     _report_problem(path,
         f'does not match current TMDB data (local: "{local_name}", expected: "{expected_name}")', counts)
@@ -699,15 +711,17 @@ def _verify_movie_online(path, name, match, parent_collection_id, counts):
         pass # enclosing collection folder's own id couldn't be determined; already reported there
     elif parent_collection_id is None:
         if collection is not None:
+            cname = _localized_collection_name(collection, data.get('original_language'))
             _report_problem(path,
-                f'movie now belongs to TMDB collection "{collection["name"]} [tmdbid-{collection["id"]}]" '
+                f'movie now belongs to TMDB collection "{cname} [tmdbid-{collection["id"]}]" '
                 'but is filed as a standalone movie', counts)
     elif collection is None:
         _report_problem(path,
             'movie no longer belongs to any TMDB collection, but is filed under a collection folder', counts)
     elif str(collection['id']) != str(parent_collection_id):
+        cname = _localized_collection_name(collection, data.get('original_language'))
         _report_problem(path,
-            f'movie belongs to TMDB collection "{collection["name"]} [tmdbid-{collection["id"]}]" '
+            f'movie belongs to TMDB collection "{cname} [tmdbid-{collection["id"]}]" '
             f'but is filed under collection [tmdbid-{parent_collection_id}]', counts)
 
 def _verify_series_online(path, name, match, counts):
@@ -733,6 +747,16 @@ def _verify_collection_online(path, name, match, counts):
     if data is None:
         _report_problem(path, 'could not verify against TMDB (network/API error)', counts)
         return
+
+    # A collection has no original_language of its own; infer it from one of its
+    # movies (which do carry original_language) and re-fetch in that language so the
+    # comparison isn't always pinned to TMDB's English-default name.
+    parts = data.get('parts') or []
+    collection_lang = parts[0].get('original_language') if parts else None
+    if collection_lang in PREFER_ORIGINAL_TITLE:
+        localized = tmdb_get_collection_by_id(match.group('id'), language=collection_lang)
+        if isinstance(localized, dict) and localized.get('name'):
+            data = localized
 
     expected = sanitize_for_windows(rename_collection_with_tmdb(match.group('id'), data.get('name')))
     if expected != name:
@@ -1097,7 +1121,8 @@ def main():
             tmdb_data = tmdb_search(movie_name, release_date)
             tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
             # search for collection information
-            tmdb_collection_data = tmdb_collection_search(tmdb_id)
+            tmdb_collection_data = tmdb_collection_search(
+                tmdb_id, language=tmdb_language if tmdb_language in PREFER_ORIGINAL_TITLE else None)
             tmdb_collection_id, tmdb_collection_name = extract_tmdb_collection_info(tmdb_collection_data)
 
             if tmdb_id:
