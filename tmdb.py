@@ -8,13 +8,44 @@ import requests
 # Provide your key via the TMDB_API_KEY environment variable.
 API_KEY = os.environ.get('TMDB_API_KEY', 'YOUR_TMDB_API_KEY')
 
+# TMDB's `year` / `first_air_date_year` search params are a soft hint (they also match
+# alternate/regional release dates), so a search can return a result whose actual year is
+# nowhere near what was asked for. Allow a small drift for legitimate festival/regional
+# release date gaps, but no more.
+YEAR_MATCH_TOLERANCE = 1
+
+def _filter_by_year(data, expected_year, date_field):
+    # Re-check locally against the date field already present on every search result - no
+    # extra API calls - before the caller counts total_results/results.
+    if data is None or not expected_year:
+        return data
+    try:
+        expected = int(expected_year)
+    except (TypeError, ValueError):
+        return data
+
+    def year_ok(item):
+        date = item.get(date_field)
+        if not date or len(date) < 4:
+            return False
+        try:
+            return abs(int(date[:4]) - expected) <= YEAR_MATCH_TOLERANCE
+        except ValueError:
+            return False
+
+    filtered = [r for r in data.get('results', []) if year_ok(r)]
+    data = dict(data)
+    data['results'] = filtered
+    data['total_results'] = len(filtered)
+    return data
+
 def tmdb_search(movie_name, release_year):
     url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}&year={release_year}'
     response = requests.get(url)
 
     if response.status_code == 200:
         data = response.json()
-        return data
+        return _filter_by_year(data, release_year, 'release_date')
     else:
         return None
 
@@ -26,7 +57,7 @@ def tmdb_tv_search(series_name, first_air_year=None):
 
     if response.status_code == 200:
         data = response.json()
-        return data
+        return _filter_by_year(data, first_air_year, 'first_air_date')
     else:
         return None
 
