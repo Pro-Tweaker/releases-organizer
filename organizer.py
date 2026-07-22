@@ -978,7 +978,7 @@ def verify_library(root, online=False):
     _clear_progress_line(counts)
     print()
     print("=== summary ===")
-    print(f"folders checked: {counts['folders']}   files checked: {counts['files']}   "
+    print(f"folders checked: {counts['folders']}   video files checked: {counts['files']}   "
           f"collections checked: {counts['collections']}   errors: {counts['errors']}")
     if online:
         elapsed = int(time.monotonic() - counts['start_time'])
