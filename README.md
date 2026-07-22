@@ -109,7 +109,7 @@ options:
   -d, --debug           enable debug output
   -dy, --dry-run        identify and print results without moving anything
   -n, --normalize       pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder
-                        loose media) before organizing
+                        loose media) and check/fix each release's group tag before organizing
   -cs, --check-syntax   offline: report how each release parses, no TMDB, no moves
   -cf, --check-full     online: report parsing + TMDB match + destination path, no moves
   -vl, --verify-library
@@ -135,6 +135,13 @@ options:
 > `--normalize` is destructive — it renames and restructures files in the input folder **in
 > place**, with no built-in undo. Always pair it with `--dry-run` first to preview the changes;
 > see the notes below for exactly what it touches and how `--dry-run` affects it.
+
+> [!CAUTION]
+> `--force-reorganize-existing-library` bypasses the organized-library safeguard described below
+> and forces the destructive organize/normalize step to run over a folder that's already tagged
+> with this tool's own naming convention. That re-parses already-organized releases as raw scene
+> dumps and can corrupt an already-built library — only pass it if you're certain that's what you
+> want.
 
 Notes:
 - `--source` selects the metadata provider for **movies** only. `tmdb` produces `[tmdbid-…]`
@@ -232,9 +239,11 @@ python organizer.py ~/Downloads ~/Media --source srrdb --nfo
 ## Input structure
 
 > [!TIP]
-> This is the folder a standard run (no options) scans. `-dy`/`--dry-run` and `-n`/`--normalize`
-> are optional flags for a real run; `-cs`/`--check-syntax` and `-cf`/`--check-full` are separate,
-> read-only modes for troubleshooting/debugging how a release parses — not part of a normal run.
+> This is the folder a standard run organizes (no options needed). `-dy`/`--dry-run` runs a
+> test/preview instead — nothing gets moved. `-n`/`--normalize` is an optional pre-pass you can add
+> to a real run to clean up messy names first. `-cs`/`--check-syntax` and `-cf`/`--check-full` are
+> separate, read-only modes for troubleshooting/debugging how a release parses — not part of a
+> normal run.
 
 The tool scans a source folder for scene/P2P style releases — a mix of self-contained release
 folders and loose media files is fine, in any combination:

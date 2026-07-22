@@ -1151,7 +1151,7 @@ def arguments():
     parser.add_argument('-dn', '--nfo', action='store_true', default=False, help='download NFO file from srrDB (movies)')
     parser.add_argument('-d', '--debug', action='store_true', default=False, help='enable debug output')
     parser.add_argument('-dy', '--dry-run', action='store_true', default=False, help='identify and print results without moving anything')
-    parser.add_argument('-n', '--normalize', action='store_true', default=False, help='pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) before organizing')
+    parser.add_argument('-n', '--normalize', action='store_true', default=False, help='pre-normalize names (spaces->dots, strip parens, 1x01->S01E01, folder loose media) and check/fix each release\'s group tag before organizing')
     parser.add_argument('-cs', '--check-syntax', action='store_true', default=False, help='offline: report how each release parses, no TMDB, no moves')
     parser.add_argument('-cf', '--check-full', action='store_true', default=False, help='online: report parsing + TMDB match + destination path, no moves')
     parser.add_argument('-vl', '--verify-library', action='store_true', default=False, help='offline: audit an already-organized library for naming/structure mistakes, no TMDB, no moves')
