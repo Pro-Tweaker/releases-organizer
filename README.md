@@ -271,6 +271,11 @@ downloads/
 
 > [!TIP]
 > This is the folder you'd point `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` at.
+> Running them right after this tool organizes something isn't very useful — there's nothing to
+> catch yet. They're meant for auditing a **hand-built** library, or for periodically re-checking
+> your own output library over time, since TMDB titles, years, and collection memberships can
+> change long after a release was first organized. A quarterly or twice-a-year re-run of
+> `--verify-library-online` is a reasonable cadence.
 
 > [!NOTE]
 > The output folder is **created** by the tool; the input folder is never deleted. These stay two
