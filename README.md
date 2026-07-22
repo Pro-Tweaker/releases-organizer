@@ -128,7 +128,7 @@ options:
 > on **raw, not-yet-organized releases** — pass your input/downloads folder as `folder`.
 >
 > `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` work the other way around: pass
-> your already-organized **output** library as `folder` instead (e.g.
+> your already-organized **library** as `folder` instead (e.g.
 > `python organizer.py ~/Media --verify-library`).
 
 > [!WARNING]
@@ -281,15 +281,15 @@ downloads/
 > [!TIP]
 > This is the folder you'd point `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` at.
 > Running them right after this tool organizes something isn't very useful — there's nothing to
-> catch yet. They're meant for auditing a **hand-built** library, or for periodically re-checking
-> your own output library over time, since TMDB titles, years, and collection memberships can
-> change long after a release was first organized. A quarterly or twice-a-year re-run of
+> catch yet. They're most useful for periodically re-checking your own library over time, since
+> TMDB titles, years, and collection memberships can change long after a release was first
+> organized — or for auditing a library built by hand. A quarterly or twice-a-year re-run of
 > `--verify-library-online` is a reasonable cadence.
 
 > [!NOTE]
 > The output folder is **created** by the tool; the input folder is never deleted. These stay two
 > separate folders — only video files are *moved* and subtitles are *copied* from the input
-> folder into the output library. Everything else (`.nfo`, `.zip`, sample files, and the emptied
+> folder into the output folder. Everything else (`.nfo`, `.zip`, sample files, and the emptied
 > release folders themselves) is left behind in the input folder unless you also pass
 > `--delete-empty`.
 
