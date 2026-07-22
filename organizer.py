@@ -1002,6 +1002,22 @@ def verify_library(root, online=False):
     if counts['errors'] == 0:
         print(f"{ANSI_GREEN}Everything looks good - no problems found.{ANSI_RESET}")
 
+def _confirm_verify_target(folder):
+    # -vl/-vlo audit an already-organized library; if nothing inside `folder` matches this
+    # tool's own naming convention, the user likely pointed at a raw/unsorted folder instead.
+    # Soft block only - ask before spending the run (and, for -vlo, TMDB calls) on it.
+    if not os.path.isdir(folder) or detect_organized_library(folder):
+        return True
+    print(f"{ANSI_YELLOW}WARNING{ANSI_RESET}: '{folder}' doesn't look like an organized Jellyfin library")
+    print("         (no folder found matching this tool's naming convention, e.g. \"Title (Year) [tmdbid-N]\").")
+    print("         --verify-library/--verify-library-online audit an already-organized library.")
+    print()
+    answer = input("Continue anyway? [y/N]: ").strip().lower()
+    if answer not in ('y', 'yes'):
+        print("Aborted.")
+        return False
+    return True
+
 def print_tmdb_api_key_help():
     print("         Set it with:")
     print("           Linux/macOS (bash/zsh):  export TMDB_API_KEY=<your-key>")
@@ -1073,10 +1089,14 @@ def main():
             print("TMDB_API_KEY is not set - --verify-library-online requires a working TMDB API key.")
             print_tmdb_api_key_help()
             return
+        if not _confirm_verify_target(folder):
+            return
         verify_library(folder, online=True)
         return
 
     if args.verify_library:
+        if not _confirm_verify_target(folder):
+            return
         verify_library(folder)
         return
 
@@ -1307,22 +1327,26 @@ def main():
 
     elapsed = int(time.monotonic() - start_time)
 
-    remaining = [] if DRY_RUN else find_remaining_video_files(folder, output)
-    if remaining:
-        print()
-        for path in remaining:
-            print(f"{ANSI_YELLOW}WARNING{ANSI_RESET}: {path}\n         still present in the input folder - not organized")
-        print()
+    # Every skipped/unmatched release already printed its own explanation above; if nothing was
+    # organized at all, the leftover-file warnings and summary below would only repeat that with
+    # no new information, so skip them (and the folder walk that builds the leftover list).
+    if counts['organized'] > 0:
+        remaining = [] if DRY_RUN else find_remaining_video_files(folder, output)
+        if remaining:
+            print()
+            for path in remaining:
+                print(f"{ANSI_YELLOW}WARNING{ANSI_RESET}: {path}\n         still present in the input folder - not organized")
+            print()
 
-    print("=== summary ===")
-    print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}   no match: {counts['no_match']}")
-    if DRY_RUN:
-        print(f"would organize: {counts['organized']}")
-    else:
-        print(f"organized: {counts['organized']}   remaining video files: {len(remaining)}")
-    print(f"elapsed: {_format_elapsed(elapsed)}")
-    if not DRY_RUN and counts['unparsed'] == 0 and counts['no_match'] == 0 and not remaining:
-        print(f"{ANSI_GREEN}Everything organized - no problems found.{ANSI_RESET}")
+        print("=== summary ===")
+        print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}   no match: {counts['no_match']}")
+        if DRY_RUN:
+            print(f"would organize: {counts['organized']}")
+        else:
+            print(f"organized: {counts['organized']}   remaining video files: {len(remaining)}")
+        print(f"elapsed: {_format_elapsed(elapsed)}")
+        if not DRY_RUN and counts['unparsed'] == 0 and counts['no_match'] == 0 and not remaining:
+            print(f"{ANSI_GREEN}Everything organized - no problems found.{ANSI_RESET}")
 
 if __name__ == "__main__":
     main()
