@@ -560,6 +560,7 @@ def run_report(releases, output, source, full=False):
     mode = "check-full" if full else "check-syntax"
     print(f"=== {mode}: {len(releases)} release(s) ===\n")
     counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'resolved': 0, 'failed': 0}
+    start_time = time.monotonic()
 
     for release in releases:
         info = classify_release(release)
@@ -597,6 +598,8 @@ def run_report(releases, output, source, full=False):
     print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}")
     if full:
         print(f"resolved: {counts['resolved']}   failed: {counts['failed']}")
+        elapsed = int(time.monotonic() - start_time)
+        print(f"elapsed: {_format_elapsed(elapsed)}")
 
 def _count_subfolders(root):
     # Fast, local-only pre-pass so the online walk can show progress against a total. Approximate:
@@ -607,6 +610,9 @@ def _count_subfolders(root):
     for _, dirs, _ in os.walk(root):
         total += len(dirs)
     return total
+
+def _format_elapsed(seconds):
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 def _tick_progress(counts):
     if not counts.get('progress_enabled') or counts.get('total') is None:
@@ -623,7 +629,7 @@ def _tick_progress(counts):
     pct = min(done * 100 // total, 100)
     elapsed = int(now - counts['start_time'])
     line = (f"  checked {done}/{total} folders (~{pct}%), "
-            f"{counts['errors']} problem(s) so far, {elapsed // 60}:{elapsed % 60:02d} elapsed")
+            f"{counts['errors']} problem(s) so far, {_format_elapsed(elapsed)} elapsed")
     pad = max(0, counts.get('last_progress_len', 0) - len(line))
     sys.stdout.write('\r' + line + ' ' * pad)
     sys.stdout.flush()
@@ -927,6 +933,7 @@ def _verify_folder(path, name, counts, is_root=False, online=False, parent_colle
         return
 
     if subdirs and not media_files:
+        counts['collections'] += 1
         if _bracket_mismatch(name):
             _report_problem(path, 'collection folder name has mismatched parentheses or brackets', counts)
             collection_id = PARENT_COLLECTION_UNKNOWN
@@ -953,9 +960,9 @@ def verify_library(root, online=False):
         print("The specified folder does not exist.")
         return
 
-    counts = {'folders': 0, 'files': 0, 'errors': 0, 'current_group': None, 'last_printed_group': None,
-              'total': None, 'progress_enabled': False, 'last_progress_len': 0,
-              'last_progress_time': 0.0, 'start_time': time.monotonic()}
+    counts = {'folders': 0, 'files': 0, 'collections': 0, 'errors': 0, 'current_group': None,
+              'last_printed_group': None, 'total': None, 'progress_enabled': False,
+              'last_progress_len': 0, 'last_progress_time': 0.0, 'start_time': time.monotonic()}
     mode = "verify-library-online" if online else "verify-library"
     print(f"=== {mode}: {root} ===\n")
     if online:
@@ -971,7 +978,11 @@ def verify_library(root, online=False):
     _clear_progress_line(counts)
     print()
     print("=== summary ===")
-    print(f"folders checked: {counts['folders']}   files checked: {counts['files']}   errors: {counts['errors']}")
+    print(f"folders checked: {counts['folders']}   files checked: {counts['files']}   "
+          f"collections checked: {counts['collections']}   errors: {counts['errors']}")
+    if online:
+        elapsed = int(time.monotonic() - counts['start_time'])
+        print(f"elapsed: {_format_elapsed(elapsed)}")
     if counts['errors'] == 0:
         print(f"{ANSI_GREEN}Everything looks good - no problems found.{ANSI_RESET}")
 
