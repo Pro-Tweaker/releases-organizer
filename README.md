@@ -115,6 +115,19 @@ options:
                         organize/normalize step anyway (dangerous)
 ```
 
+> [!IMPORTANT]
+> `-dy`/`--dry-run`, `-n`/`--normalize`, `-cs`/`--check-syntax`, and `-cf`/`--check-full` all work
+> on **raw, not-yet-organized releases** — pass your input/downloads folder as `folder`.
+>
+> `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` work the other way around: pass
+> your already-organized **output** library as `folder` instead (e.g.
+> `python organizer.py ~/Media --verify-library`).
+
+> [!WARNING]
+> `--normalize` is destructive — it renames and restructures files in the input folder **in
+> place**, with no built-in undo. Always pair it with `--dry-run` first to preview the changes;
+> see the notes below for exactly what it touches and how `--dry-run` affects it.
+
 Notes:
 - `--source` selects the metadata provider for **movies** only. `tmdb` produces `[tmdbid-…]`
   folders; `srrdb` looks up the IMDb id and produces `[imdbid-tt…]` folders.
@@ -210,6 +223,10 @@ python organizer.py ~/Downloads ~/Media --source srrdb --nfo
 
 ## Input structure
 
+> [!TIP]
+> This is the folder you'd point `-dy`/`--dry-run`, `-n`/`--normalize`, `-cs`/`--check-syntax`, and
+> `-cf`/`--check-full` at.
+
 The tool scans a source folder for scene/P2P style releases — a mix of self-contained release
 folders and loose media files is fine, in any combination:
 
@@ -242,6 +259,16 @@ downloads/
   own folder) can be cleaned up first with `--normalize` — see [Usage](#usage).
 
 ## Output structure
+
+> [!TIP]
+> This is the folder you'd point `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` at.
+
+> [!NOTE]
+> The output folder is **created** by the tool; the input folder is never deleted. These stay two
+> separate folders — only video files are *moved* and subtitles are *copied* from the input
+> folder into the output library. Everything else (`.nfo`, `.zip`, sample files, and the emptied
+> release folders themselves) is left behind in the input folder unless you also pass
+> `--delete-empty`.
 
 ```
 output/
