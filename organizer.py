@@ -635,6 +635,16 @@ def _clear_progress_line(counts):
         sys.stdout.flush()
         counts['last_progress_len'] = 0
 
+def _tmdb_retry_progress_logger(counts):
+    # Retry warnings from tmdb.py print to stderr mid-run; without this they'd land on top of
+    # the live \r-based progress line instead of their own line. Same clear-then-print pattern
+    # _report_problem uses for error reports.
+    def log(message):
+        _clear_progress_line(counts)
+        print(f"  [tmdb] {message}", file=sys.stderr)
+        counts['blank_before_next_progress'] = True
+    return log
+
 def _report_problem(path, message, counts):
     _clear_progress_line(counts)
     counts['errors'] += 1
@@ -952,7 +962,12 @@ def verify_library(root, online=False):
         counts['progress_enabled'] = sys.stdout.isatty()
         counts['total'] = _count_subfolders(root)
         counts['start_time'] = time.monotonic()
-    _verify_folder(root, os.path.basename(os.path.normpath(root)), counts, is_root=True, online=online)
+        set_retry_logger(_tmdb_retry_progress_logger(counts))
+    try:
+        _verify_folder(root, os.path.basename(os.path.normpath(root)), counts, is_root=True, online=online)
+    finally:
+        if online:
+            set_retry_logger(None)
     _clear_progress_line(counts)
     print()
     print("=== summary ===")
