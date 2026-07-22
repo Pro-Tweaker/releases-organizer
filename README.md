@@ -24,7 +24,11 @@ created.
   any `*sample*` files are skipped.
 - **Name cleanup (`--normalize`)** — an optional pre-pass that rewrites messy names before
   organizing: spaces → dots, strips parentheses, converts `1x01` episode numbering to `S01E01`
-  (which Jellyfin matches far better), and wraps loose media files into folders.
+  (which Jellyfin matches far better), and wraps loose media files into folders. It also checks
+  that every release ends with a Scene/P2P group tag (`-GROUPNAME`); if one is missing, it prompts
+  you for it (suggesting a fix when the group looks like it was just dot-attached, e.g.
+  `...x264.EbP` → `...x264-EbP`), then applies the same fix to any file inside the release sharing
+  its exact name — the video file, `.nfo`, subtitles, or a same-named sample.
 - **AKA titles** — release names using `AKA` / `A.k.a.` (e.g.
   `Foreign.Title.AKA.English.Title.1966…`) are parsed to the title next to the year/season for a
   reliable TMDB match. Works for both movies and TV.
@@ -119,6 +123,9 @@ Notes:
   (except in `--check-full`, which is non-interactive and flags it as `AMBIGUOUS`).
 - `--normalize` is a pre-pass that runs before scanning. It modifies the source folder unless
   `--dry-run` is also given, and it applies even when combined with `--check-syntax`/`--check-full`.
+  Its group-tag check prompts you interactively even under `--dry-run` (nothing is written to
+  disk either way in that case) — press Enter to accept a suggested fix, type a replacement group
+  name, or `n` to leave a release as-is.
 - `--verify-library` is a different job from `--check-syntax`/`--check-full`: those preview how
   *raw, not-yet-organized* releases would be parsed, while `--verify-library` audits a folder
   that's already in (or supposed to be in) this tool's own output layout — e.g. `movies/en/` or

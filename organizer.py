@@ -484,13 +484,109 @@ def normalize_name(name):
                   lambda m: f"S{int(m.group(1)):02d}E{m.group(2)}", name)
     return name.replace(' ', '.').replace('(', '').replace(')', '')
 
+# Scene/P2P convention: a release name ends with "-GROUPNAME" identifying who released it
+# (e.g. "...x264-EbP"). Group names are completely free-form (any case, letters/digits), so
+# this only checks the *shape* of the ending, not any specific value.
+GROUP_TAG_RE = re.compile(r'-[A-Za-z0-9]+$')
+
+def _rename_group_matches(scan_dir, old_name, new_name, dry_run):
+    # Diff the folder's own before/after name to find exactly what the group-tag fix changed,
+    # then apply the same change to every file inside (recursively - e.g. a Sample/ sub-folder,
+    # or a season/mini-series pack's per-episode files), whatever their own name looks like
+    # otherwise (SxxExx, a part number, a date, ...).
+    #
+    # Dot-attached fix (".x264.EbP" -> "-EbP"): the common prefix of old/new stops right where
+    # "." became "-", so old_suffix is the short tag that was dot-attached (e.g. ".EbP") - match
+    # any file ending with that exact tag and replace it the same way, regardless of what comes
+    # before it in that file's own name.
+    # Missing-group fix (append "-answer"): old_name is a full prefix of new_name, so there's
+    # nothing distinctive to diff on (old_suffix is empty) - instead append the same group tag to
+    # every file in the release that doesn't already end with a proper "-GROUPNAME" of its own.
+    common_len = len(os.path.commonprefix([old_name, new_name]))
+    old_suffix = old_name[common_len:]
+    new_suffix = new_name[common_len:]
+
+    for root, _, files in os.walk(scan_dir):
+        for name in files:
+            stem, ext = os.path.splitext(name)
+            if GROUP_TAG_RE.search(stem):
+                continue  # already properly tagged, leave it alone
+            if old_suffix:
+                if not stem.endswith(old_suffix):
+                    continue
+                new_stem = stem[:len(stem) - len(old_suffix)] + new_suffix
+            else:
+                new_stem = stem + new_suffix
+            new_file_name = new_stem + ext
+            src, dst = os.path.join(root, name), os.path.join(root, new_file_name)
+            if dry_run:
+                print(f"[normalize] rename: {name}")
+                print(f"                 -> {new_file_name}")
+            elif os.path.exists(dst):
+                print(f"[normalize] skip (target exists): {new_file_name}")
+            else:
+                os.rename(src, dst)
+
+def _verify_release_group(folder_path, name, dry_run):
+    if GROUP_TAG_RE.search(name):
+        return  # already ends "-GROUPNAME"
+
+    # If the name has a trailing dot-segment, suggest turning it into the group tag - this is
+    # right when the group was just dot-attached (".x264.EbP" -> "-EbP"), and harmless-but-wrong
+    # when there's no group at all (".x264.AC3" -> suggesting "AC3"); either way the user reviews
+    # it below rather than it being applied blindly.
+    if '.' in name:
+        head, suggestion = name.rsplit('.', 1)
+        default_new_name = f"{head}-{suggestion}"
+    else:
+        head, suggestion, default_new_name = name, None, None
+
+    print(f"[normalize] no release group tag found: {name}")
+    print( '            expected a trailing "-GROUPNAME"')
+
+    prompt = "            Enter the release group name"
+    prompt += f' (Enter to accept "{suggestion}")' if suggestion else ''
+    prompt += ", 'n' to use \"NOGRP\", or 's' to skip: "
+    try:
+        answer = input(prompt).strip()
+    except EOFError:
+        answer = 's'
+
+    if answer.lower() in ('s', 'skip'):
+        print("            left as-is.")
+        print()
+        return
+    if answer.lower() == 'n':
+        answer = 'NOGRP'
+    new_name = f"{name}-{answer}" if answer else default_new_name
+    if not new_name:
+        print("            left as-is.")
+        print()
+        return
+
+    src_dir = os.path.join(folder_path, name)
+    dst_dir = os.path.join(folder_path, new_name)
+    if dry_run:
+        print(f"[normalize] rename: {name}")
+        print(f"                 -> {new_name}")
+    elif os.path.exists(dst_dir):
+        print(f"[normalize] skip (target exists): {new_name}")
+        print()
+        return
+    else:
+        os.rename(src_dir, dst_dir)
+
+    _rename_group_matches(src_dir if dry_run else dst_dir, name, new_name, dry_run)
+    print()
+
 def normalize_input(folder_path, dry_run=False):
     # Python port of Releases-renamer.ps1, scoped to folder_path:
     # 1) normalise names (spaces->dots, strip parens, 1x01->S01E01),
-    # 2) wrap loose media in a folder
+    # 2) wrap loose media in a folder,
+    # 3) verify/fix each release's Scene/P2P group tag (folder + same-named files inside)
     if not os.path.isdir(folder_path):
         print("The specified folder does not exist.")
-        return
+        return False
 
     # 1. Rename bottom-up so renamed parents never invalidate child paths
     for root, dirs, files in os.walk(folder_path, topdown=False):
@@ -500,7 +596,8 @@ def normalize_input(folder_path, dry_run=False):
                 continue
             src, dst = os.path.join(root, name), os.path.join(root, new_name)
             if dry_run:
-                print(f"[normalize] rename: {name} -> {new_name}")
+                print(f"[normalize] rename: {name}")
+                print(f"                 -> {new_name}")
             elif os.path.exists(dst):
                 print(f"[normalize] skip (target exists): {new_name}")
             else:
@@ -515,14 +612,30 @@ def normalize_input(folder_path, dry_run=False):
         dest_dir = os.path.join(folder_path, stem)
         subs = sibling_subtitles(folder_path, name)
         if dry_run:
-            print(f"[normalize] folder: {name} -> {stem}/{name}")
-            for sub in subs:
-                print(f"[normalize] folder: {sub} -> {stem}/{sub}")
+            print(f"[normalize] wrap in folder: {stem}/")
+            for f in [name] + subs:
+                print(f"            - {f}")
+            print()
             continue
         os.makedirs(dest_dir, exist_ok=True)
         move_file(path, os.path.join(dest_dir, name))
         for sub in subs:
             move_file(os.path.join(folder_path, sub), os.path.join(dest_dir, sub))
+        print()
+
+    # 3. Verify each release folder carries a Scene/P2P group tag; ask for a fix when it's
+    # missing, and keep any same-named file inside (video, subs, nfo, sample) in sync.
+    for name in os.listdir(folder_path):
+        path = os.path.join(folder_path, name)
+        if not os.path.isdir(path):
+            continue
+        if _is_pass_through_folder(name) or _has_organized_marker(name):
+            continue
+        if not collect_valid_files(path):
+            continue
+        _verify_release_group(folder_path, name, dry_run)
+
+    return True
 
 def resolve_release(info, output, source):
     # Look a parsed release up on TMDB (single result only, never prompts) and
@@ -1120,7 +1233,8 @@ def main():
         return
 
     if args.normalize:
-        normalize_input(folder, DRY_RUN)
+        if not normalize_input(folder, DRY_RUN):
+            return
 
     results = separate(folder)
 
