@@ -84,6 +84,13 @@ ANSI_GREEN = "\x1b[32m"
 ANSI_YELLOW = "\x1b[33m"
 ANSI_RESET = "\x1b[0m"
 
+def _colored_count(label, n):
+    # Red flags a genuine failure worth investigating; zero stays the terminal's plain
+    # default color rather than green, so it doesn't read as a false "all clear".
+    if n > 0:
+        return f"{ANSI_RED}{label}: {n}{ANSI_RESET}"
+    return f"{label}: {n}"
+
 # Sentinel for _verify_movie_online: the movie's parent collection folder name is itself
 # malformed, so there's no reliable expected collection id to compare against - the name
 # problem is already reported at the collection folder itself, don't cascade a second,
@@ -686,7 +693,8 @@ def resolve_release(info, output, source):
 def run_report(releases, output, source, full=False):
     mode = "check-full" if full else "check-syntax"
     print(f"=== {mode}: {len(releases)} release(s) ===\n")
-    counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'resolved': 0, 'failed': 0}
+    counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'resolved': 0,
+              'no_match': 0, 'ambiguous': 0, 'bad_date': 0, 'no_season': 0, 'skipped': 0}
     start_time = time.monotonic()
 
     for release in releases:
@@ -718,13 +726,31 @@ def run_report(releases, output, source, full=False):
             print(f"     STATUS: {status}")
             print(f"     DEST:   {dest}\n")
         else:
-            counts['failed'] += 1
+            if status == "NO TMDB MATCH":
+                counts['no_match'] += 1
+            elif status.startswith("AMBIGUOUS"):
+                counts['ambiguous'] += 1
+            elif status == "BAD RELEASE DATE":
+                counts['bad_date'] += 1
+            elif status == "NO SEASON DETERMINED":
+                counts['no_season'] += 1
+            elif status.startswith("SKIP"):
+                counts['skipped'] += 1
             print(f"     STATUS: {status}\n")
 
+    total = counts['movie'] + counts['tv']
+    parsed = total - counts['unparsed']
+    failed = counts['no_match'] + counts['ambiguous'] + counts['bad_date'] + counts['no_season'] + counts['skipped']
     print("=== summary ===")
-    print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}")
+    print(f"movies: {counts['movie']}   tv: {counts['tv']}   total: {total}")
+    print(f"parsed: {parsed}   {_colored_count('unparsed', counts['unparsed'])}")
     if full:
-        print(f"resolved: {counts['resolved']}   failed: {counts['failed']}")
+        # total = movie + tv = parsed + unparsed; parsed = resolved + failed;
+        # failed = no_match + ambiguous + bad_date + no_season + skipped.
+        print(f"resolved: {counts['resolved']}   failed: {failed}")
+        print(f"{_colored_count('no match', counts['no_match'])}   ambiguous: {counts['ambiguous']}   "
+              f"{_colored_count('bad date', counts['bad_date'])}   {_colored_count('no season', counts['no_season'])}"
+              f"   skipped: {counts['skipped']}")
         elapsed = int(time.monotonic() - start_time)
         print(f"elapsed: {_format_elapsed(elapsed)}")
 
@@ -1121,7 +1147,7 @@ def verify_library(root, online=False):
     print()
     print("=== summary ===")
     print(f"folders checked: {counts['folders']}   video files checked: {counts['files']}   "
-          f"collections checked: {counts['collections']}   errors: {counts['errors']}")
+          f"collections checked: {counts['collections']}   {_colored_count('errors', counts['errors'])}")
     if online:
         elapsed = int(time.monotonic() - counts['start_time'])
         print(f"elapsed: {_format_elapsed(elapsed)}")
@@ -1189,6 +1215,10 @@ def main():
     download_srr = args.srr
     download_nfo = args.nfo
 
+    if not os.path.isdir(folder):
+        print(f"The specified folder does not exist: {folder}")
+        return
+
     DEBUG = args.debug
     DRY_RUN = args.dry_run
 
@@ -1255,7 +1285,8 @@ def main():
         run_report(results, output, source, full=args.check_full)
         return
 
-    counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'no_match': 0, 'organized': 0}
+    counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'organized': 0,
+              'no_match': 0, 'ambiguous': 0, 'bad_date': 0, 'no_season': 0}
     start_time = time.monotonic()
 
     for release in results:
@@ -1306,12 +1337,32 @@ def main():
             tv_id, tv_title, tv_first_air_date, tv_language = extract_tmdb_tv_info(release_name, tv_data)
 
             if not tv_id:
-                counts['no_match'] += 1
-                print(f"No TMDb series match for {release_name}")
+                total = tv_data.get('total_results', 0) if tv_data else 0
+                if total > 1:
+                    counts['ambiguous'] += 1
+                    print(f"Ambiguous TMDb series match for {release_name} - skipped")
+                else:
+                    counts['no_match'] += 1
+                    print(f"No TMDb series match for {release_name}")
                 print("")
                 continue
 
             renamed_series = rename_series_with_tmdb(tv_id, tv_title, tv_first_air_date)
+
+            # Collect the episode files (a season pack folder, or a single episode file)
+            if release.is_folder:
+                source_dir = os.path.join(folder, release.name)
+                episode_files = release.files
+            else:
+                source_dir = folder
+                episode_files = [release.name]
+
+            if not any(season_from_filename(os.path.basename(f)) is not None for f in episode_files):
+                counts['no_season'] += 1
+                print(f"No season could be determined for {release_name} - skipping")
+                print("")
+                continue
+
             counts['organized'] += 1
             print(f"Renamed Series: {renamed_series}")
             if DEBUG:
@@ -1321,14 +1372,6 @@ def main():
                 print("Dry run enabled, not moving the files")
                 print("")
                 continue
-
-            # Collect the episode files (a season pack folder, or a single episode file)
-            if release.is_folder:
-                source_dir = os.path.join(folder, release.name)
-                episode_files = release.files
-            else:
-                source_dir = folder
-                episode_files = [release.name]
 
             for file in episode_files:
                 # file may be a nested relative path; the season and the destination
@@ -1388,28 +1431,40 @@ def main():
             if not tmdb_id and alt_movie_name:
                 tmdb_data = tmdb_search(alt_movie_name, release_date)
                 tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
+
+            if not tmdb_id:
+                total = tmdb_data.get('total_results', 0) if tmdb_data else 0
+                if total > 1:
+                    counts['ambiguous'] += 1
+                    print(f"Ambiguous TMDb movie match for {release_name} - skipped")
+                else:
+                    counts['no_match'] += 1
+                    print(f"No TMDb movie match for {release_name}")
+                print("")
+                continue
+
             # search for collection information
             tmdb_collection_data = tmdb_collection_search(
                 tmdb_id, language=tmdb_language if tmdb_language in PREFER_ORIGINAL_TITLE else None)
             tmdb_collection_id, tmdb_collection_name = extract_tmdb_collection_info(tmdb_collection_data)
 
-            if tmdb_id:
-                if DEBUG:
-                    print("TMDb Movie Info:")
-                    print(f"ID: {tmdb_id}")
-                    print(f"Title: {tmdb_title}")
-                    print(f"Release Date: {tmdb_release_date}")
-                    print(f"Language set: {tmdb_language}")
-                    if tmdb_collection_id is not None and tmdb_collection_name is not None:
-                        print(f"Collection ID: {tmdb_collection_id}")
-                        print(f"Collection Name: {tmdb_collection_name}")
-                renamed_release = rename_release_with_tmdb(tmdb_id, tmdb_title, tmdb_release_date)
-                renamed_collection = rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name)
-            else:
-                counts['no_match'] += 1
-                print(f"No TMDb movie match for {release_name}")
+            if DEBUG:
+                print("TMDb Movie Info:")
+                print(f"ID: {tmdb_id}")
+                print(f"Title: {tmdb_title}")
+                print(f"Release Date: {tmdb_release_date}")
+                print(f"Language set: {tmdb_language}")
+                if tmdb_collection_id is not None and tmdb_collection_name is not None:
+                    print(f"Collection ID: {tmdb_collection_id}")
+                    print(f"Collection Name: {tmdb_collection_name}")
+
+            renamed_release = rename_release_with_tmdb(tmdb_id, tmdb_title, tmdb_release_date)
+            if not renamed_release:
+                counts['bad_date'] += 1
+                print(f"Bad TMDb release date for {release_name} (id {tmdb_id}) - skipping")
                 print("")
                 continue
+            renamed_collection = rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name)
 
         counts['organized'] += 1
         print(f"Renamed Release: {renamed_release}")
@@ -1457,26 +1512,35 @@ def main():
 
     elapsed = int(time.monotonic() - start_time)
 
-    # Every skipped/unmatched release already printed its own explanation above; if nothing was
-    # organized at all, the leftover-file warnings and summary below would only repeat that with
-    # no new information, so skip them (and the folder walk that builds the leftover list).
-    if counts['organized'] > 0:
-        remaining = [] if DRY_RUN else find_remaining_video_files(folder, output)
+    # The leftover-file folder walk is only meaningful once something has actually moved,
+    # so skip it (and the warnings it would produce) on a run that organized nothing.
+    remaining = []
+    if counts['organized'] > 0 and not DRY_RUN:
+        remaining = find_remaining_video_files(folder, output)
         if remaining:
             print()
             for path in remaining:
                 print(f"{ANSI_YELLOW}WARNING{ANSI_RESET}: {path}\n         still present in the input folder - not organized")
             print()
 
-        print("=== summary ===")
-        print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}   no match: {counts['no_match']}")
-        if DRY_RUN:
-            print(f"would organize: {counts['organized']}")
-        else:
-            print(f"organized: {counts['organized']}   remaining video files: {len(remaining)}")
-        print(f"elapsed: {_format_elapsed(elapsed)}")
-        if not DRY_RUN and counts['unparsed'] == 0 and counts['no_match'] == 0 and not remaining:
-            print(f"{ANSI_GREEN}Everything organized - no problems found.{ANSI_RESET}")
+    total = counts['movie'] + counts['tv']
+    parsed = total - counts['unparsed']
+    failed = counts['no_match'] + counts['ambiguous'] + counts['bad_date'] + counts['no_season']
+    print("=== summary ===")
+    print(f"movies: {counts['movie']}   tv: {counts['tv']}   total: {total}")
+    print(f"parsed: {parsed}   {_colored_count('unparsed', counts['unparsed'])}")
+    # total = movie + tv = parsed + unparsed; parsed = organized + failed;
+    # failed = no_match + ambiguous + bad_date + no_season.
+    if DRY_RUN:
+        print(f"would organize: {counts['organized']}   failed: {failed}")
+    else:
+        print(f"organized: {counts['organized']}   failed: {failed}   remaining video files: {len(remaining)}")
+    print(f"{_colored_count('no match', counts['no_match'])}   ambiguous: {counts['ambiguous']}   "
+          f"{_colored_count('bad date', counts['bad_date'])}   {_colored_count('no season', counts['no_season'])}")
+    print(f"elapsed: {_format_elapsed(elapsed)}")
+    if (not DRY_RUN and counts['unparsed'] == 0 and counts['no_match'] == 0
+            and counts['bad_date'] == 0 and counts['no_season'] == 0 and not remaining):
+        print(f"{ANSI_GREEN}Everything organized - no problems found.{ANSI_RESET}")
 
 if __name__ == "__main__":
     main()
