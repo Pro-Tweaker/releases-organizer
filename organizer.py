@@ -81,6 +81,7 @@ LANGUAGE_CODE_RE = re.compile(r'^[A-Za-z]{2}(-[A-Za-z]{2})?$')
 
 ANSI_RED = "\x1b[31m"
 ANSI_GREEN = "\x1b[32m"
+ANSI_YELLOW = "\x1b[33m"
 ANSI_RESET = "\x1b[0m"
 
 # Sentinel for _verify_movie_online: the movie's parent collection folder name is itself
@@ -671,6 +672,21 @@ def _is_pass_through_folder(name):
 def _is_video_file(filename):
     return filename.lower().endswith(tuple(VALID_EXTENSIONS)) and 'sample' not in filename.lower()
 
+def find_remaining_video_files(folder, output):
+    # After a normal-mode run, whatever video files are still sitting in the input folder are
+    # leftovers (parse failures, no metadata match, per-episode misses, etc.) worth flagging.
+    # Skip the destination tree in case output lives inside folder (e.g. default "./output"),
+    # otherwise freshly-organized files would falsely show up as "remaining".
+    abs_output = os.path.abspath(output)
+    remaining = []
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = [d for d in dirs if d.lower() not in JUNK_DIRS
+                   and os.path.abspath(os.path.join(root, d)) != abs_output]
+        for name in files:
+            if _is_video_file(name):
+                remaining.append(os.path.join(root, name))
+    return remaining
+
 _ORGANIZED_SCAN_MAX_DEPTH = 4
 
 def _has_organized_marker(name):
@@ -1092,6 +1108,9 @@ def main():
         run_report(results, output, source, full=args.check_full)
         return
 
+    counts = {'movie': 0, 'tv': 0, 'unparsed': 0, 'no_match': 0, 'organized': 0}
+    start_time = time.monotonic()
+
     for release in results:
 
         if(release.is_folder):
@@ -1118,6 +1137,7 @@ def main():
         tv_pattern = r'[.\s]S\d{2}(?:E\d{2})?[.\s]' # dot or space, season pack or episode
         tv_matches = re.findall(tv_pattern, release.name)
         if tv_matches:
+            counts['tv'] += 1
             if DEBUG:
                 print("The file or folder contains the pattern:", tv_matches)
                 print()
@@ -1129,6 +1149,7 @@ def main():
                 print(f"Series Year: {series_year}")
 
             if series_name == "Unknown Series":
+                counts['unparsed'] += 1
                 print(f"Could not parse a series name from '{release_name}' - skipping. "
                       "Run --check-syntax to preview parsing.")
                 print("")
@@ -1138,11 +1159,13 @@ def main():
             tv_id, tv_title, tv_first_air_date, tv_language = extract_tmdb_tv_info(release_name, tv_data)
 
             if not tv_id:
+                counts['no_match'] += 1
                 print(f"No TMDb series match for {release_name}")
                 print("")
                 continue
 
             renamed_series = rename_series_with_tmdb(tv_id, tv_title, tv_first_air_date)
+            counts['organized'] += 1
             print(f"Renamed Series: {renamed_series}")
             if DEBUG:
                 print(f"Language set: {tv_language}")
@@ -1193,7 +1216,9 @@ def main():
             print("")
             continue
         
+        counts['movie'] += 1
         if movie_name == "Unknown Movie" or release_date == "YearUnknown":
+            counts['unparsed'] += 1
             print(f"Could not parse a title/year from '{release_name}' - skipping. "
                   "Run --check-syntax to preview parsing.")
             print("")
@@ -1205,6 +1230,7 @@ def main():
         if source == "srrdb":
             result = srrdb(release_name)
             if result is None:
+                counts['no_match'] += 1
                 print(f"No srrDB match for {release_name}")
                 print("")
                 continue
@@ -1230,10 +1256,12 @@ def main():
                 renamed_release = rename_release_with_tmdb(tmdb_id, tmdb_title, tmdb_release_date)
                 renamed_collection = rename_collection_with_tmdb(tmdb_collection_id, tmdb_collection_name)
             else:
+                counts['no_match'] += 1
                 print(f"No TMDb movie match for {release_name}")
                 print("")
                 continue
 
+        counts['organized'] += 1
         print(f"Renamed Release: {renamed_release}")
         if renamed_collection:
             print(f"Renamed Collection: {renamed_collection}")
@@ -1276,6 +1304,25 @@ def main():
                 srrdb_download_nfo(release_name, path)
 
         print("")
+
+    elapsed = int(time.monotonic() - start_time)
+
+    remaining = [] if DRY_RUN else find_remaining_video_files(folder, output)
+    if remaining:
+        print()
+        for path in remaining:
+            print(f"{ANSI_YELLOW}WARNING{ANSI_RESET}: {path}\n         still present in the input folder - not organized")
+        print()
+
+    print("=== summary ===")
+    print(f"movies: {counts['movie']}   tv: {counts['tv']}   unparsed: {counts['unparsed']}   no match: {counts['no_match']}")
+    if DRY_RUN:
+        print(f"would organize: {counts['organized']}")
+    else:
+        print(f"organized: {counts['organized']}   remaining video files: {len(remaining)}")
+    print(f"elapsed: {_format_elapsed(elapsed)}")
+    if not DRY_RUN and counts['unparsed'] == 0 and counts['no_match'] == 0 and not remaining:
+        print(f"{ANSI_GREEN}Everything organized - no problems found.{ANSI_RESET}")
 
 if __name__ == "__main__":
     main()
