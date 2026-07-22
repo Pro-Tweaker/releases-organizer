@@ -224,8 +224,9 @@ python organizer.py ~/Downloads ~/Media --source srrdb --nfo
 ## Input structure
 
 > [!TIP]
-> This is the folder you'd point `-dy`/`--dry-run`, `-n`/`--normalize`, `-cs`/`--check-syntax`, and
-> `-cf`/`--check-full` at.
+> This is the folder a standard run (no options) scans. `-dy`/`--dry-run` and `-n`/`--normalize`
+> are optional flags for a real run; `-cs`/`--check-syntax` and `-cf`/`--check-full` are separate,
+> read-only modes for troubleshooting/debugging how a release parses — not part of a normal run.
 
 The tool scans a source folder for scene/P2P style releases — a mix of self-contained release
 folders and loose media files is fine, in any combination:
