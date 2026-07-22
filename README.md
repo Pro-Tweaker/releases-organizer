@@ -32,15 +32,22 @@ created.
 - **AKA titles** — release names using `AKA` / `A.k.a.` (e.g.
   `Foreign.Title.AKA.English.Title.1966…`) are parsed to the title next to the year/season for a
   reliable TMDB match. Works for both movies and TV.
-- **Subtitles** — `.srt` files are copied next to the video. Subtitles inside a release folder are
-  picked up automatically; a loose top-level subtitle is matched to its video by shared base name
-  (e.g. `Movie…FLUX.mkv` + `Movie…FLUX.FR.srt`) and copied to the same destination.
+- **Subtitles** — subtitle files (`.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`/`.idx`, `.sup`) are copied
+  next to the video. Subtitles inside a release folder are picked up automatically; a loose
+  top-level subtitle is matched to its video by shared base name (e.g. `Movie…FLUX.mkv` +
+  `Movie…FLUX.FR.srt`) and copied to the same destination.
 - **Video files are moved**, everything else (`.nfo`, `.zip`, `Sample/`, …) is left behind.
 - **srrDB extras** — optionally download the matching `.srr` and `.nfo` files for movies.
 - **Windows-safe** — folder names are stripped of characters Windows disallows.
+- **Run summary** — every run (organize, `--check-syntax`/`--check-full`, `--verify-library`/
+  `--verify-library-online`) ends with an `=== summary ===` block: counts by type, elapsed time,
+  and — for a normal organize run — a warning listing any video files still left in the input
+  folder that weren't organized.
 
-Recognized media extensions: `avi`, `iso`, `m2ts`, `mk3d`, `mkv`, `mov`, `mp4`, `mpeg`, `mpg`,
-`ts` (moved); `srt` (copied).
+> [!NOTE]
+> Recognized media extensions — video (moved): `avi`, `iso`, `m2ts`, `m4v`, `mk3d`, `mkv`, `mov`,
+> `mp4`, `mpeg`, `mpg`, `ogg`, `ts`, `webm`; subtitles (copied): `srt`, `vtt`, `ass`, `ssa`, `sub`,
+> `idx`, `sup`.
 
 ## Requirements
 
@@ -96,7 +103,7 @@ options:
   -h, --help            show this help message and exit
   -s, --source {tmdb,srrdb}
                         metadata source for movies (default: tmdb)
-  -de, --delete-empty   delete source folders once empty after the move
+  -de, --delete-empty   delete empty folders after move
   -ds, --srr            download SRR file from srrDB (movies)
   -dn, --nfo            download NFO file from srrDB (movies)
   -d, --debug           enable debug output
@@ -109,7 +116,8 @@ options:
                         offline: audit an already-organized library for naming/structure
                         mistakes, no TMDB, no moves
   -vlo, --verify-library-online
-                        online: run --verify-library plus live TMDB drift checks, no moves
+                        online: run --verify-library plus TMDB drift checks (mistyped/dead ids,
+                        collection membership changes), no moves
   --force-reorganize-existing-library
                         override the organized-library safety check and run the destructive
                         organize/normalize step anyway (dangerous)
