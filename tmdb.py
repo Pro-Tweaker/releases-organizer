@@ -100,8 +100,15 @@ def _tmdb_get_json(url):
 
 def tmdb_search(movie_name, release_year):
     url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}&year={release_year}'
-    data = _tmdb_get_json(url)
-    return _filter_by_year(data, release_year, 'release_date')
+    data = _filter_by_year(_tmdb_get_json(url), release_year, 'release_date')
+    if release_year and (data is None or data.get('total_results', 0) == 0):
+        # TMDB's `year` param is a hard server-side filter, not a hint - it can exclude a
+        # movie whose primary release date lands a year off from a festival/regional date
+        # in the scene name, even though it's within our own tolerance. Broaden the query
+        # and re-apply the tolerance locally.
+        url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}'
+        data = _filter_by_year(_tmdb_get_json(url), release_year, 'release_date')
+    return data
 
 def tmdb_tv_search(series_name, first_air_year=None):
     url = f'https://api.themoviedb.org/3/search/tv?api_key={API_KEY}&query={series_name}'

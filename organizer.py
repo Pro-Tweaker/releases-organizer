@@ -187,14 +187,25 @@ def extract_movie_info(release_name):
 
     if match:
         # When the title carries an "AKA", keep only the title next to the year
-        movie_name = strip_aka(match.group(1)).replace('.', ' ').strip()
+        full_title = match.group(1)
+        movie_name = strip_aka(full_title).replace('.', ' ').strip()
         release_date = match.group(2)
+        # The part before "AKA" is usually the film's actual original-language title (the
+        # part after is often a fan-invented or export-catalog title TMDB doesn't use) -
+        # keep it as a fallback candidate for when the primary search finds nothing.
+        alt_name = None
+        aka_parts = re.split(r'(?<![A-Za-z0-9])AKA(?![A-Za-z0-9])', full_title)
+        if len(aka_parts) > 1:
+            pre_aka = aka_parts[0].replace('.', ' ').strip()
+            if pre_aka:
+                alt_name = pre_aka
     else:
         # If no match is found, set default values
         movie_name = "Unknown Movie"
         release_date = "YearUnknown"
+        alt_name = None
 
-    return movie_name, release_date
+    return movie_name, release_date, alt_name
 
 def srrdb(release_name):
     search_result = srrdb_search(release_name)
@@ -289,7 +300,7 @@ def rename_release_with_srrdb(release_name, imdb_data):
         return release_name  # If IMDb data is not available, keep the original name
 
     # Reuse extract_movie_info's year parsing rather than a separate ad hoc regex
-    _, release_date = extract_movie_info(release_name)
+    _, release_date, _ = extract_movie_info(release_name)
 
     # Generate the new release name format
     new_release_name = f"{movie_name} ({release_date}) [imdbid-tt{imdb_id}]"
@@ -472,10 +483,10 @@ def classify_release(release):
         return {'kind': 'tv', 'release': release.name, 'name': series_name,
                 'year': series_year, 'seasons': seasons, 'parsed_ok': parsed_ok}
 
-    movie_name, year = extract_movie_info(release_name)
+    movie_name, year, alt_name = extract_movie_info(release_name)
     parsed_ok = movie_name != "Unknown Movie" and year != "YearUnknown"
     return {'kind': 'movie', 'release': release.name, 'name': movie_name,
-            'year': year, 'parsed_ok': parsed_ok}
+            'year': year, 'alt_name': alt_name, 'parsed_ok': parsed_ok}
 
 def normalize_name(name):
     # spaces -> dots, strip parentheses, and rewrite "1x01" episode numbering to
@@ -644,6 +655,8 @@ def resolve_release(info, output, source):
         if source == 'srrdb':
             return "SKIP (srrdb not checked)", None
         data = tmdb_search(info['name'], info['year'])
+        if (not data or data.get('total_results', 0) == 0) and info.get('alt_name'):
+            data = tmdb_search(info['alt_name'], info['year'])
         if not data or data.get('total_results', 0) == 0:
             return "NO TMDB MATCH", None
         if data['total_results'] > 1:
@@ -1259,7 +1272,7 @@ def main():
         else:
             release_name, _ = os.path.splitext(release.name)
 
-        movie_name, release_date = extract_movie_info(release_name)
+        movie_name, release_date, alt_movie_name = extract_movie_info(release_name)
         
         if DEBUG:
             print(f"Release Name: {release_name}")
@@ -1372,6 +1385,9 @@ def main():
         elif source == "tmdb":
             tmdb_data = tmdb_search(movie_name, release_date)
             tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
+            if not tmdb_id and alt_movie_name:
+                tmdb_data = tmdb_search(alt_movie_name, release_date)
+                tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
             # search for collection information
             tmdb_collection_data = tmdb_collection_search(
                 tmdb_id, language=tmdb_language if tmdb_language in PREFER_ORIGINAL_TITLE else None)
