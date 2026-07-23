@@ -4,6 +4,7 @@
 import os
 import sys
 import time
+from urllib.parse import quote
 
 import requests
 
@@ -107,7 +108,7 @@ def tmdb_search(movie_name, release_year):
     # _progressive_tmdb_search) or the sentinel string "YearUnknown" - neither is a
     # real year, so don't send it as a literal query value.
     has_year = bool(release_year) and str(release_year).isdigit()
-    url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}'
+    url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={quote(movie_name)}'
     if has_year:
         url += f'&year={release_year}'
     data = _filter_by_year(_tmdb_get_json(url), release_year, 'release_date')
@@ -116,12 +117,12 @@ def tmdb_search(movie_name, release_year):
         # movie whose primary release date lands a year off from a festival/regional date
         # in the scene name, even though it's within our own tolerance. Broaden the query
         # and re-apply the tolerance locally.
-        url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}'
+        url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={quote(movie_name)}'
         data = _filter_by_year(_tmdb_get_json(url), release_year, 'release_date')
     return data
 
 def tmdb_tv_search(series_name, first_air_year=None):
-    url = f'https://api.themoviedb.org/3/search/tv?api_key={API_KEY}&query={series_name}'
+    url = f'https://api.themoviedb.org/3/search/tv?api_key={API_KEY}&query={quote(series_name)}'
     if first_air_year:
         url += f'&first_air_date_year={first_air_year}'
     data = _tmdb_get_json(url)
