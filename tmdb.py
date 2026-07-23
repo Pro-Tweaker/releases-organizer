@@ -18,8 +18,12 @@ RETRY_BACKOFF_MAX = 30  # cap on computed/Retry-After backoff
 # TMDB's `year` / `first_air_date_year` search params are a soft hint (they also match
 # alternate/regional release dates), so a search can return a result whose actual year is
 # nowhere near what was asked for. Allow a small drift for legitimate festival/regional
-# release date gaps, but no more.
-YEAR_MATCH_TOLERANCE = 1
+# release date gaps, but no more. 2 covers the common festival-premiere-vs-wide-release gap
+# (e.g. Terrifier: 2016 festival vs 2018 TMDB release_date) at the cost of occasionally
+# surfacing a same-titled mockbuster/making-of as an extra AMBIGUOUS candidate - measured
+# against a ~4600-release library, this only ever affects releases that were already relying
+# on the broadened (year-less) fallback search, and nets more clean fixes than regressions.
+YEAR_MATCH_TOLERANCE = 2
 
 def _filter_by_year(data, expected_year, date_field):
     # Re-check locally against the date field already present on every search result - no
