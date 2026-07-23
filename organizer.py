@@ -177,6 +177,20 @@ def strip_aka(name):
         return re.split(r'(?<![A-Za-z0-9])AKA(?![A-Za-z0-9])', name)[-1]
     return name
 
+def _split_aka(full_title):
+    # The part before "AKA" is usually the film's actual original-language title (the
+    # part after is often a fan-invented or export-catalog title TMDB doesn't use) -
+    # return the kept (post-AKA, or whole string if there's no AKA) title plus the
+    # pre-AKA part as a fallback candidate for when the primary search finds nothing.
+    kept = strip_aka(full_title).replace('.', ' ').strip()
+    alt_name = None
+    aka_parts = re.split(r'(?<![A-Za-z0-9])AKA(?![A-Za-z0-9])', full_title)
+    if len(aka_parts) > 1:
+        pre_aka = aka_parts[0].replace('.', ' ').strip()
+        if pre_aka:
+            alt_name = pre_aka
+    return kept, alt_name
+
 def extract_movie_info(release_name):
     normalized = normalize_aka(release_name)
 
@@ -193,24 +207,22 @@ def extract_movie_info(release_name):
     match = re.search(pattern, normalized)
 
     if match:
-        # When the title carries an "AKA", keep only the title next to the year
-        full_title = match.group(1)
-        movie_name = strip_aka(full_title).replace('.', ' ').strip()
+        movie_name, alt_name = _split_aka(match.group(1))
         release_date = match.group(2)
-        # The part before "AKA" is usually the film's actual original-language title (the
-        # part after is often a fan-invented or export-catalog title TMDB doesn't use) -
-        # keep it as a fallback candidate for when the primary search finds nothing.
-        alt_name = None
-        aka_parts = re.split(r'(?<![A-Za-z0-9])AKA(?![A-Za-z0-9])', full_title)
-        if len(aka_parts) > 1:
-            pre_aka = aka_parts[0].replace('.', ' ').strip()
-            if pre_aka:
-                alt_name = pre_aka
     else:
-        # If no match is found, set default values
-        movie_name = "Unknown Movie"
+        # No year anywhere in the name - there's nothing left to anchor the
+        # title/tags boundary locally. Keep the whole (AKA-stripped) string as the
+        # title rather than guessing where the tags start: a hand-curated list of
+        # release-tag words (resolution/source/codec/audio/language/edition/group)
+        # would always be missing some, and a wrong guess could truncate a real
+        # title (e.g. a movie whose title itself contains a word like "French").
+        # The actual title/tag boundary gets resolved later, online, by
+        # _progressive_tmdb_search - see resolve_release / main().
+        movie_name, alt_name = _split_aka(normalized)
         release_date = "YearUnknown"
-        alt_name = None
+
+    if not movie_name:
+        movie_name = "Unknown Movie"
 
     return movie_name, release_date, alt_name
 
@@ -491,9 +503,10 @@ def classify_release(release):
                 'year': series_year, 'seasons': seasons, 'parsed_ok': parsed_ok}
 
     movie_name, year, alt_name = extract_movie_info(release_name)
-    parsed_ok = movie_name != "Unknown Movie" and year != "YearUnknown"
+    parsed_ok = movie_name != "Unknown Movie"
     return {'kind': 'movie', 'release': release.name, 'name': movie_name,
-            'year': year, 'alt_name': alt_name, 'parsed_ok': parsed_ok}
+            'year': year, 'alt_name': alt_name, 'parsed_ok': parsed_ok,
+            'year_unknown': year == "YearUnknown"}
 
 def normalize_name(name):
     # spaces -> dots, strip parentheses, and rewrite "1x01" episode numbering to
@@ -655,40 +668,76 @@ def normalize_input(folder_path, dry_run=False):
 
     return True
 
+def _progressive_tmdb_search(words):
+    # No year to anchor the title/tag boundary - grow the query word by word from
+    # the left (the title is always the leftmost part of a scene release name,
+    # followed only by tags and the group) and let TMDB itself judge how far the
+    # real title extends, instead of maintaining a local guess-list of release
+    # tags (there are thousands of possible resolution/source/codec/audio/
+    # language tokens - any hand-curated list would always be missing some).
+    # Keeps expanding as long as TMDB still returns something, and only stops
+    # once one more word makes the result count drop to zero - that's the signal
+    # a tag word just got included - then uses that longest still-recognized
+    # prefix. Stopping at the first single-result prefix instead would risk
+    # locking onto a short, coincidentally-unique wrong match before the real
+    # title has fully formed.
+    best = None
+    for i in range(1, len(words) + 1):
+        candidate = ' '.join(words[:i])
+        data = tmdb_search(candidate, None)
+        total = data.get('total_results', 0) if data else 0
+        if total == 0:
+            if best is not None:
+                break  # this word crossed into tag territory - back off
+            continue    # still haven't found anything recognizable yet
+        best = (candidate, data)
+    return best  # None, or (winning search query, its TMDB data)
+
 def resolve_release(info, output, source):
-    # Look a parsed release up on TMDB (single result only, never prompts) and
-    # return (status, destination_path_or_None) for the report.
+    # Look a parsed release up on TMDB (single result only, never prompts) and return
+    # (status, destination_path_or_None, matched_title_or_None) for the report.
+    # matched_title is only ever set for a no-year movie resolved via
+    # _progressive_tmdb_search - it's the search query that got the hit, not a
+    # confirmed title, so it's set for AMBIGUOUS/BAD RELEASE DATE too, not just OK.
     if info['kind'] == 'movie':
         if source == 'srrdb':
-            return "SKIP (srrdb not checked)", None
-        data = tmdb_search(info['name'], info['year'])
-        if (not data or data.get('total_results', 0) == 0) and info.get('alt_name'):
-            data = tmdb_search(info['alt_name'], info['year'])
+            return "SKIP (srrdb not checked)", None, None
+        matched_title = None
+        if info['year'] == "YearUnknown":
+            result = _progressive_tmdb_search(info['name'].split())
+            if not result and info.get('alt_name'):
+                result = _progressive_tmdb_search(info['alt_name'].split())
+            matched_title, data = result if result else (None, None)
+        else:
+            data = tmdb_search(info['name'], info['year'])
+            if (not data or data.get('total_results', 0) == 0) and info.get('alt_name'):
+                data = tmdb_search(info['alt_name'], info['year'])
         if not data or data.get('total_results', 0) == 0:
-            return "NO TMDB MATCH", None
+            return "NO TMDB MATCH", None, matched_title
         if data['total_results'] > 1:
-            return f"AMBIGUOUS ({data['total_results']} matches)", None
+            return f"AMBIGUOUS ({data['total_results']} matches)", None, matched_title
         tid, title, rdate, lang = extract_tmdb_info(info['release'], data)
         renamed = rename_release_with_tmdb(tid, title, rdate)
         if not renamed:
-            return "BAD RELEASE DATE", None
+            return "BAD RELEASE DATE", None, matched_title
         cid, cname = extract_tmdb_collection_info(
             tmdb_collection_search(tid, language=lang if lang in PREFER_ORIGINAL_TITLE else None))
         renamed_coll = rename_collection_with_tmdb(cid, cname)
-        return "OK", movie_destination(output, lang, renamed_coll, renamed)
+        return "OK", movie_destination(output, lang, renamed_coll, renamed), matched_title
 
     data = tmdb_tv_search(info['name'], info['year'])
     if not data or data.get('total_results', 0) == 0:
-        return "NO TMDB MATCH", None
+        return "NO TMDB MATCH", None, None
     if data['total_results'] > 1:
-        return f"AMBIGUOUS ({data['total_results']} matches)", None
+        return f"AMBIGUOUS ({data['total_results']} matches)", None, None
     tid, title, air, lang = extract_tmdb_tv_info(info['release'], data)
     renamed = rename_series_with_tmdb(tid, title, air)
     seasons = sorted(s for s in info['seasons'] if s is not None)
     if not seasons:
-        return "NO SEASON DETERMINED", None
+        return "NO SEASON DETERMINED", None, None
     season_list = ", ".join(f"{s:02d}" for s in seasons)
-    return f"OK (seasons {season_list})", os.path.join(output, "tv", lang, sanitize_for_windows(renamed))
+    return (f"OK (seasons {season_list})",
+            os.path.join(output, "tv", lang, sanitize_for_windows(renamed)), None)
 
 def run_report(releases, output, source, full=False):
     mode = "check-full" if full else "check-syntax"
@@ -709,20 +758,42 @@ def run_report(releases, output, source, full=False):
             print(f"     -> {info['name']} ({info['year'] or '----'})  seasons: {season_desc}")
         else:
             print(f"MOV  {info['release']}")
-            print(f"     -> {info['name']} ({info['year']})")
+            # A no-year movie's guessed title is just the raw name with dots turned to
+            # spaces (tags and all) - showing it here would just repeat the line above.
+            # Show "Unknown Movie" instead; the real search candidate (if any) prints
+            # separately as GUESS: once resolve_release actually tries it below.
+            display_name = "Unknown Movie" if info.get('year_unknown') else info['name']
+            print(f"     -> {display_name} ({info['year']})")
 
         if not info['parsed_ok']:
             counts['unparsed'] += 1
             print("     STATUS: SKIP (could not parse)\n")
             continue
 
+        # A movie's own release name not including a year is an input-quality gap -
+        # count it as unparsed regardless of whether TMDB later manages to resolve it
+        # via a title-only search (see _progressive_tmdb_search). Whether it actually
+        # resolves is a separate, independent question tracked by resolved/failed below.
+        if info['kind'] == 'movie' and info.get('year_unknown'):
+            counts['unparsed'] += 1
+
         if not full:
-            print("     STATUS: parsed\n")
+            # Offline preview only - a movie with no year in its name can't be verified
+            # without TMDB (there's no local, non-whitelist way to tell a real title
+            # apart from noise), so treat it the same as a parse failure here. --check-full
+            # actually resolves it via _progressive_tmdb_search and reports the real
+            # outcome instead of guessing.
+            if info.get('year_unknown'):
+                print("     STATUS: SKIP (could not parse)\n")
+            else:
+                print("     STATUS: parsed\n")
             continue
 
-        status, dest = resolve_release(info, output, source)
+        status, dest, matched_title = resolve_release(info, output, source)
         if dest:
             counts['resolved'] += 1
+            if matched_title:
+                print(f"     GUESS:  {matched_title}")
             print(f"     STATUS: {status}")
             print(f"     DEST:   {dest}\n")
         else:
@@ -736,7 +807,10 @@ def run_report(releases, output, source, full=False):
                 counts['no_season'] += 1
             elif status.startswith("SKIP"):
                 counts['skipped'] += 1
-            print(f"     STATUS: {status}\n")
+            if matched_title:
+                print(f"     GUESS:  {matched_title}")
+            print(f"     STATUS: {status}")
+            print()
 
     total = counts['movie'] + counts['tv']
     parsed = total - counts['unparsed']
@@ -745,8 +819,9 @@ def run_report(releases, output, source, full=False):
     print(f"movies: {counts['movie']}   tv: {counts['tv']}   total: {total}")
     print(f"parsed: {parsed}   {_colored_count('unparsed', counts['unparsed'])}")
     if full:
-        # total = movie + tv = parsed + unparsed; parsed = resolved + failed;
-        # failed = no_match + ambiguous + bad_date + no_season + skipped.
+        # total = movie + tv = parsed + unparsed (independent of resolved + failed -
+        # see _progressive_tmdb_search); failed = no_match + ambiguous + bad_date +
+        # no_season + skipped.
         print(f"resolved: {counts['resolved']}   failed: {failed}")
         print(f"{_colored_count('no match', counts['no_match'])}   ambiguous: {counts['ambiguous']}   "
               f"{_colored_count('bad date', counts['bad_date'])}   {_colored_count('no season', counts['no_season'])}"
@@ -1407,12 +1482,16 @@ def main():
             continue
         
         counts['movie'] += 1
-        if movie_name == "Unknown Movie" or release_date == "YearUnknown":
+        if movie_name == "Unknown Movie":
             counts['unparsed'] += 1
             print(f"Could not parse a title/year from '{release_name}' - skipping. "
                   "Run --check-syntax to preview parsing.")
             print("")
             continue
+
+        if release_date == "YearUnknown":
+            counts['unparsed'] += 1
+            print(f"Note: no year found in '{release_name}' - matching by title only")
 
         renamed_collection = None
         tmdb_language = "en"
@@ -1426,10 +1505,16 @@ def main():
                 continue
             renamed_release = rename_release_with_srrdb(release_name, result)
         elif source == "tmdb":
-            tmdb_data = tmdb_search(movie_name, release_date)
+            if release_date == "YearUnknown":
+                tmdb_data = _progressive_tmdb_search(movie_name.split())
+            else:
+                tmdb_data = tmdb_search(movie_name, release_date)
             tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
             if not tmdb_id and alt_movie_name:
-                tmdb_data = tmdb_search(alt_movie_name, release_date)
+                if release_date == "YearUnknown":
+                    tmdb_data = _progressive_tmdb_search(alt_movie_name.split())
+                else:
+                    tmdb_data = tmdb_search(alt_movie_name, release_date)
                 tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
 
             if not tmdb_id:
@@ -1529,8 +1614,8 @@ def main():
     print("=== summary ===")
     print(f"movies: {counts['movie']}   tv: {counts['tv']}   total: {total}")
     print(f"parsed: {parsed}   {_colored_count('unparsed', counts['unparsed'])}")
-    # total = movie + tv = parsed + unparsed; parsed = organized + failed;
-    # failed = no_match + ambiguous + bad_date + no_season.
+    # total = movie + tv = parsed + unparsed (independent of organized + failed - see
+    # _progressive_tmdb_search); failed = no_match + ambiguous + bad_date + no_season.
     if DRY_RUN:
         print(f"would organize: {counts['organized']}   failed: {failed}")
     else:

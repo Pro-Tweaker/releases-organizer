@@ -99,9 +99,15 @@ def _tmdb_get_json(url):
     return None
 
 def tmdb_search(movie_name, release_year):
-    url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}&year={release_year}'
+    # release_year may be None (no year at all - see organizer.py's
+    # _progressive_tmdb_search) or the sentinel string "YearUnknown" - neither is a
+    # real year, so don't send it as a literal query value.
+    has_year = bool(release_year) and str(release_year).isdigit()
+    url = f'https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}'
+    if has_year:
+        url += f'&year={release_year}'
     data = _filter_by_year(_tmdb_get_json(url), release_year, 'release_date')
-    if release_year and (data is None or data.get('total_results', 0) == 0):
+    if has_year and (data is None or data.get('total_results', 0) == 0):
         # TMDB's `year` param is a hard server-side filter, not a hint - it can exclude a
         # movie whose primary release date lands a year off from a festival/regional date
         # in the scene name, even though it's within our own tolerance. Broaden the query
