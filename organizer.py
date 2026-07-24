@@ -260,12 +260,29 @@ def srrdb(release_name):
         else:
             return None
 
-def extract_tmdb_info(release_name, tmdb_data):
-    if tmdb_data is None:
-        return None, None, None, None
+def _lookup_and_confirm_tmdb_id(id_value, fetch_fn, kind_label, title_field, date_field, context=None):
+    # Shared by every manual-TMDB-ID entry point (M, direct paste, "no match" fallback) in
+    # extract_tmdb_info/extract_tmdb_tv_info - a mistyped id is otherwise likely to resolve to
+    # some unrelated real movie/show (TMDB ids are dense), so always show what it resolved to
+    # and require an explicit 'y' before committing.
+    candidate = fetch_fn(id_value)
+    if not candidate:
+        print(f"No TMDB {kind_label} found with ID {id_value}.")
+        return None
+    year = (candidate.get(date_field) or '')[:4] or '?'
+    title = candidate.get(title_field, '?')
+    prompt = (f"{context} - did you mean TMDB ID {id_value} ({title}, {year})? [y/N]: " if context
+              else f"TMDB ID {id_value}: {title} ({year}) - use this? [y/N]: ")
+    if input(prompt).strip().lower() != 'y':
+        return None
+    return candidate
 
-    if 'total_results' in tmdb_data and tmdb_data['total_results'] > 0:
-        if tmdb_data['total_results'] == 1:
+def extract_tmdb_info(release_name, tmdb_data):
+    total_results = tmdb_data.get('total_results', 0) if tmdb_data else 0
+    first_movie = None
+
+    if total_results > 0:
+        if total_results == 1:
             # If there's only one result, return it
             first_movie = tmdb_data['results'][0]
         else:
@@ -285,10 +302,10 @@ def extract_tmdb_info(release_name, tmdb_data):
                     if not id_input.isdigit():
                         print("Invalid TMDB ID. Please enter a numeric ID.")
                         continue
-                    first_movie = tmdb_get_movie_by_id(id_input)
-                    if not first_movie:
-                        print(f"No TMDB movie found with ID {id_input}. Please try again.")
+                    candidate = _lookup_and_confirm_tmdb_id(id_input, tmdb_get_movie_by_id, "movie", "title", "release_date")
+                    if not candidate:
                         continue
+                    first_movie = candidate
                     break
                 try:
                     choice = int(raw_choice)
@@ -302,28 +319,38 @@ def extract_tmdb_info(release_name, tmdb_data):
                     first_movie = tmdb_data['results'][choice - 1]
                     break
                 else:
-                    candidate = tmdb_get_movie_by_id(choice)
+                    candidate = _lookup_and_confirm_tmdb_id(
+                        choice, tmdb_get_movie_by_id, "movie", "title", "release_date",
+                        context=f"No result numbered {choice} above")
                     if candidate:
-                        candidate_year = (candidate.get('release_date') or '')[:4] or '?'
-                        confirm = input(
-                            f"No result numbered {choice} above - did you mean TMDB ID {choice} "
-                            f"({candidate.get('title', '?')}, {candidate_year})? [y/N]: ").strip().lower()
-                        if confirm == 'y':
-                            first_movie = candidate
-                            break
+                        first_movie = candidate
+                        break
                     print("Invalid choice. Please enter a valid number.")
 
-        id = first_movie['id']
-        if first_movie['original_language'] in PREFER_ORIGINAL_TITLE:
-            title = first_movie['original_title']
-            output_per_language = first_movie['original_language']
-        else:
-            title = first_movie['title']
-            output_per_language = "en"
-        release_date = first_movie['release_date']
-        return id, title, release_date, output_per_language
+    if first_movie is None:
+        print(f"No TMDB match found for {release_name}.")
+        while True:
+            id_input = input("Enter a TMDB ID manually, or press Enter to skip this release: ").strip()
+            if not id_input:
+                return None, None, None, None
+            if not id_input.isdigit():
+                print("Invalid TMDB ID. Please enter a numeric ID, or press Enter to skip.")
+                continue
+            candidate = _lookup_and_confirm_tmdb_id(id_input, tmdb_get_movie_by_id, "movie", "title", "release_date")
+            if not candidate:
+                continue
+            first_movie = candidate
+            break
+
+    id = first_movie['id']
+    if first_movie['original_language'] in PREFER_ORIGINAL_TITLE:
+        title = first_movie['original_title']
+        output_per_language = first_movie['original_language']
     else:
-        return None, None, None, None
+        title = first_movie['title']
+        output_per_language = "en"
+    release_date = first_movie['release_date']
+    return id, title, release_date, output_per_language
 
 def extract_tmdb_collection_info(tmdb_collection_data):
     if tmdb_collection_data is None:
@@ -397,11 +424,11 @@ def extract_tv_info(release_name):
     return series_name, year, season
 
 def extract_tmdb_tv_info(release_name, tv_data):
-    if tv_data is None:
-        return None, None, None, None
+    total_results = tv_data.get('total_results', 0) if tv_data else 0
+    first_show = None
 
-    if 'total_results' in tv_data and tv_data['total_results'] > 0:
-        if tv_data['total_results'] == 1:
+    if total_results > 0:
+        if total_results == 1:
             # If there's only one result, return it
             first_show = tv_data['results'][0]
         else:
@@ -421,10 +448,10 @@ def extract_tmdb_tv_info(release_name, tv_data):
                     if not id_input.isdigit():
                         print("Invalid TMDB ID. Please enter a numeric ID.")
                         continue
-                    first_show = tmdb_get_tv_by_id(id_input)
-                    if not first_show:
-                        print(f"No TMDB series found with ID {id_input}. Please try again.")
+                    candidate = _lookup_and_confirm_tmdb_id(id_input, tmdb_get_tv_by_id, "series", "name", "first_air_date")
+                    if not candidate:
                         continue
+                    first_show = candidate
                     break
                 try:
                     choice = int(raw_choice)
@@ -438,28 +465,38 @@ def extract_tmdb_tv_info(release_name, tv_data):
                     first_show = tv_data['results'][choice - 1]
                     break
                 else:
-                    candidate = tmdb_get_tv_by_id(choice)
+                    candidate = _lookup_and_confirm_tmdb_id(
+                        choice, tmdb_get_tv_by_id, "series", "name", "first_air_date",
+                        context=f"No result numbered {choice} above")
                     if candidate:
-                        candidate_year = (candidate.get('first_air_date') or '')[:4] or '?'
-                        confirm = input(
-                            f"No result numbered {choice} above - did you mean TMDB ID {choice} "
-                            f"({candidate.get('name', '?')}, {candidate_year})? [y/N]: ").strip().lower()
-                        if confirm == 'y':
-                            first_show = candidate
-                            break
+                        first_show = candidate
+                        break
                     print("Invalid choice. Please enter a valid number.")
 
-        id = first_show['id']
-        if first_show.get('original_language') in PREFER_ORIGINAL_TITLE:
-            title = first_show['original_name']
-            output_per_language = first_show['original_language']
-        else:
-            title = first_show['name']
-            output_per_language = "en"
-        first_air_date = first_show.get('first_air_date', '')
-        return id, title, first_air_date, output_per_language
+    if first_show is None:
+        print(f"No TMDB match found for {release_name}.")
+        while True:
+            id_input = input("Enter a TMDB ID manually, or press Enter to skip this release: ").strip()
+            if not id_input:
+                return None, None, None, None
+            if not id_input.isdigit():
+                print("Invalid TMDB ID. Please enter a numeric ID, or press Enter to skip.")
+                continue
+            candidate = _lookup_and_confirm_tmdb_id(id_input, tmdb_get_tv_by_id, "series", "name", "first_air_date")
+            if not candidate:
+                continue
+            first_show = candidate
+            break
+
+    id = first_show['id']
+    if first_show.get('original_language') in PREFER_ORIGINAL_TITLE:
+        title = first_show['original_name']
+        output_per_language = first_show['original_language']
     else:
-        return None, None, None, None
+        title = first_show['name']
+        output_per_language = "en"
+    first_air_date = first_show.get('first_air_date', '')
+    return id, title, first_air_date, output_per_language
 
 def rename_series_with_tmdb(series_id, series_name, first_air_date):
     try:
