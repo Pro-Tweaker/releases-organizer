@@ -1506,13 +1506,15 @@ def main():
             renamed_release = rename_release_with_srrdb(release_name, result)
         elif source == "tmdb":
             if release_date == "YearUnknown":
-                tmdb_data = _progressive_tmdb_search(movie_name.split())
+                result = _progressive_tmdb_search(movie_name.split())
+                _, tmdb_data = result if result else (None, None)
             else:
                 tmdb_data = tmdb_search(movie_name, release_date)
             tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
             if not tmdb_id and alt_movie_name:
                 if release_date == "YearUnknown":
-                    tmdb_data = _progressive_tmdb_search(alt_movie_name.split())
+                    result = _progressive_tmdb_search(alt_movie_name.split())
+                    _, tmdb_data = result if result else (None, None)
                 else:
                     tmdb_data = tmdb_search(alt_movie_name, release_date)
                 tmdb_id, tmdb_title, tmdb_release_date, tmdb_language = extract_tmdb_info(release_name, tmdb_data)
