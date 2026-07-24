@@ -270,24 +270,48 @@ def extract_tmdb_info(release_name, tmdb_data):
             first_movie = tmdb_data['results'][0]
         else:
             print(f"Multiple results found for {release_name}. Please choose which result to use:")
+            if tmdb_data['total_results'] > len(tmdb_data['results']):
+                print(f"(showing {len(tmdb_data['results'])} of {tmdb_data['total_results']} results - more exist on later TMDB pages)")
 
             for i, movie in enumerate(tmdb_data['results']):
                 print(f"{i + 1}. {movie['title']} ({movie['release_date']}) - https://www.themoviedb.org/movie/{movie['id']}")
             print("0. None of these - skip this release")
+            print("M. Force a TMDB ID lookup (only needed if your ID matches a number above)")
 
             while True:
+                raw_choice = input("Enter a number, 0 to skip, or paste a TMDB ID directly: ").strip()
+                if raw_choice.lower() == 'm':
+                    id_input = input("Enter the TMDB ID: ").strip()
+                    if not id_input.isdigit():
+                        print("Invalid TMDB ID. Please enter a numeric ID.")
+                        continue
+                    first_movie = tmdb_get_movie_by_id(id_input)
+                    if not first_movie:
+                        print(f"No TMDB movie found with ID {id_input}. Please try again.")
+                        continue
+                    break
                 try:
-                    choice = int(input("Enter the number of the result to use: "))
-                    if choice == 0:
-                        print(f"Skipped: no matching result chosen for {release_name}")
-                        return None, None, None, None
-                    if 1 <= choice <= len(tmdb_data['results']):
-                        first_movie = tmdb_data['results'][choice - 1]
-                        break
-                    else:
-                        print("Invalid choice. Please enter a valid number.")
+                    choice = int(raw_choice)
                 except ValueError:
-                    print("Invalid input. Please enter a number.")
+                    print("Invalid input. Please enter a number, or M to force a TMDB ID lookup.")
+                    continue
+                if choice == 0:
+                    print(f"Skipped: no matching result chosen for {release_name}")
+                    return None, None, None, None
+                if 1 <= choice <= len(tmdb_data['results']):
+                    first_movie = tmdb_data['results'][choice - 1]
+                    break
+                else:
+                    candidate = tmdb_get_movie_by_id(choice)
+                    if candidate:
+                        candidate_year = (candidate.get('release_date') or '')[:4] or '?'
+                        confirm = input(
+                            f"No result numbered {choice} above - did you mean TMDB ID {choice} "
+                            f"({candidate.get('title', '?')}, {candidate_year})? [y/N]: ").strip().lower()
+                        if confirm == 'y':
+                            first_movie = candidate
+                            break
+                    print("Invalid choice. Please enter a valid number.")
 
         id = first_movie['id']
         if first_movie['original_language'] in PREFER_ORIGINAL_TITLE:
@@ -382,24 +406,48 @@ def extract_tmdb_tv_info(release_name, tv_data):
             first_show = tv_data['results'][0]
         else:
             print(f"Multiple results found for {release_name}. Please choose which result to use:")
+            if tv_data['total_results'] > len(tv_data['results']):
+                print(f"(showing {len(tv_data['results'])} of {tv_data['total_results']} results - more exist on later TMDB pages)")
 
             for i, show in enumerate(tv_data['results']):
                 print(f"{i + 1}. {show['name']} ({show.get('first_air_date', 'N/A')}) - https://www.themoviedb.org/tv/{show['id']}")
             print("0. None of these - skip this release")
+            print("M. Force a TMDB ID lookup (only needed if your ID matches a number above)")
 
             while True:
+                raw_choice = input("Enter a number, 0 to skip, or paste a TMDB ID directly: ").strip()
+                if raw_choice.lower() == 'm':
+                    id_input = input("Enter the TMDB ID: ").strip()
+                    if not id_input.isdigit():
+                        print("Invalid TMDB ID. Please enter a numeric ID.")
+                        continue
+                    first_show = tmdb_get_tv_by_id(id_input)
+                    if not first_show:
+                        print(f"No TMDB series found with ID {id_input}. Please try again.")
+                        continue
+                    break
                 try:
-                    choice = int(input("Enter the number of the result to use: "))
-                    if choice == 0:
-                        print(f"Skipped: no matching result chosen for {release_name}")
-                        return None, None, None, None
-                    if 1 <= choice <= len(tv_data['results']):
-                        first_show = tv_data['results'][choice - 1]
-                        break
-                    else:
-                        print("Invalid choice. Please enter a valid number.")
+                    choice = int(raw_choice)
                 except ValueError:
-                    print("Invalid input. Please enter a number.")
+                    print("Invalid input. Please enter a number, or M to force a TMDB ID lookup.")
+                    continue
+                if choice == 0:
+                    print(f"Skipped: no matching result chosen for {release_name}")
+                    return None, None, None, None
+                if 1 <= choice <= len(tv_data['results']):
+                    first_show = tv_data['results'][choice - 1]
+                    break
+                else:
+                    candidate = tmdb_get_tv_by_id(choice)
+                    if candidate:
+                        candidate_year = (candidate.get('first_air_date') or '')[:4] or '?'
+                        confirm = input(
+                            f"No result numbered {choice} above - did you mean TMDB ID {choice} "
+                            f"({candidate.get('name', '?')}, {candidate_year})? [y/N]: ").strip().lower()
+                        if confirm == 'y':
+                            first_show = candidate
+                            break
+                    print("Invalid choice. Please enter a valid number.")
 
         id = first_show['id']
         if first_show.get('original_language') in PREFER_ORIGINAL_TITLE:

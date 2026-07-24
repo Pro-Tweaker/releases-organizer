@@ -147,8 +147,12 @@ Notes:
 - `--source` selects the metadata provider for **movies** only. `tmdb` produces `[tmdbid-…]`
   folders; `srrdb` looks up the IMDb id and produces `[imdbid-tt…]` folders.
   **TV shows always use TMDB** regardless of `--source`.
-- When a release matches more than one title, you'll be prompted to pick the correct one
-  (except in `--check-full`, which is non-interactive and flags it as `AMBIGUOUS`).
+- When a release matches more than one title, you'll be prompted to pick the correct one from
+  the list (only the first ~20 TMDB matches are shown; if more exist, a note tells you so). You
+  can also paste a TMDB ID directly instead of a list number - it's looked up and confirmed
+  automatically - or type `M` first to force an ID lookup when the id you want collides with a
+  number already in the list (except in `--check-full`, which is non-interactive and flags it as
+  `AMBIGUOUS`).
 - `--normalize` is a pre-pass that runs before scanning. It modifies the source folder unless
   `--dry-run` is also given, and it applies even when combined with `--check-syntax`/`--check-full`.
   Its group-tag check prompts you interactively even under `--dry-run` (nothing is written to
