@@ -22,7 +22,7 @@ created.
 - **Nested releases** — release folders are scanned recursively, so scene TV season packs that
   nest each episode in its own sub-folder are handled. `Sample`/`Proof`/screenshot folders and
   any `*sample*` files are skipped.
-- **Name cleanup (`--normalize`)** — an optional pre-pass that rewrites messy names before
+- **Name cleanup (`--normalize`)** — an optional pre-pass that rewrites messy release names before
   organizing: spaces → dots, strips parentheses, converts `1x01` episode numbering to `S01E01`
   (which Jellyfin matches far better), and wraps loose media files into folders. It also checks
   that every release ends with a Scene/P2P group tag (`-GROUPNAME`); if one is missing, it prompts
@@ -197,7 +197,7 @@ Preview what would happen without moving files:
 python organizer.py ~/Downloads ~/Media --dry-run
 ```
 
-Clean up messy human-named files first, then organize:
+Clean up messy release names first, then organize:
 
 ```
 python organizer.py ~/Downloads ~/Media --normalize
@@ -238,13 +238,6 @@ python organizer.py ~/Downloads ~/Media --source srrdb --nfo
 
 ## Input structure
 
-> [!TIP]
-> This is the folder a standard run organizes (no options needed). `-dy`/`--dry-run` runs a
-> test/preview instead — nothing gets moved. `-n`/`--normalize` is an optional pre-pass you can add
-> to a real run to clean up messy names first. `-cs`/`--check-syntax` and `-cf`/`--check-full` are
-> separate, read-only modes for troubleshooting/debugging how a release parses — not part of a
-> normal run.
-
 The tool scans a source folder for scene/P2P style releases — a mix of self-contained release
 folders and loose media files is fine, in any combination:
 
@@ -273,18 +266,17 @@ downloads/
   (`Amelie.2001…GROUP.FR.srt`) is picked up automatically and copied alongside its video.
   Season-pack folders can nest each episode in its own sub-folder — the tool scans recursively
   and flattens the result.
-- Messy, human-renamed folders (spaces, `1x01` episode numbering, loose files not yet in their
-  own folder) can be cleaned up first with `--normalize` — see [Usage](#usage).
-
-## Output structure
+- Messy release names (spaces, `1x01` episode numbering, loose files not yet in their own
+  folder) can be cleaned up first with `--normalize` — see [Usage](#usage).
 
 > [!TIP]
-> This is the folder you'd point `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` at.
-> Running them right after this tool organizes something isn't very useful — there's nothing to
-> catch yet. They're most useful for periodically re-checking your own library over time, since
-> TMDB titles, years, and collection memberships can change long after a release was first
-> organized — or for auditing a library built by hand. A quarterly or twice-a-year re-run of
-> `--verify-library-online` is a reasonable cadence.
+> This is the folder a standard run organizes (no options needed). `-dy`/`--dry-run` runs a
+> test/preview instead — nothing gets moved. `-n`/`--normalize` is an optional pre-pass you can add
+> to a real run to clean up messy release names first. `-cs`/`--check-syntax` and `-cf`/`--check-full` are
+> separate, read-only modes for troubleshooting/debugging how a release parses — not part of a
+> normal run.
+
+## Output structure
 
 > [!NOTE]
 > The output folder is **created** by the tool; the input folder is never deleted. These stay two
@@ -314,6 +306,14 @@ output/
                 ├── Lupin.2021.S01E01.1080p.WEB-GROUP.mkv
                 └── Lupin.2021.S01E02.1080p.WEB-GROUP.mkv
 ```
+
+> [!TIP]
+> This is the folder you'd point `-vl`/`--verify-library` and `-vlo`/`--verify-library-online` at.
+> Running them right after this tool organizes something isn't very useful — there's nothing to
+> catch yet. They're most useful for periodically re-checking your own library over time, since
+> TMDB titles, years, and collection memberships can change long after a release was first
+> organized — or for auditing a library built by hand. A quarterly or twice-a-year re-run of
+> `--verify-library-online` is a reasonable cadence.
 
 ## Naming convention
 
