@@ -281,7 +281,7 @@ def extract_tmdb_info(release_name, tmdb_data):
                     if choice == 0:
                         print(f"Skipped: no matching result chosen for {release_name}")
                         return None, None, None, None
-                    if 1 <= choice <= tmdb_data['total_results']:
+                    if 1 <= choice <= len(tmdb_data['results']):
                         first_movie = tmdb_data['results'][choice - 1]
                         break
                     else:
