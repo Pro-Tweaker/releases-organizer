@@ -277,7 +277,7 @@ def extract_tmdb_info(release_name, tmdb_data):
 
             while True:
                 try:
-                    choice = int(input("Enter the number of the entry you want: "))
+                    choice = int(input("Enter the number of the result to use: "))
                     if choice == 0:
                         print(f"Skipped: no matching result chosen for {release_name}")
                         return None, None, None, None
